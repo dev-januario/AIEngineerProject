@@ -1,0 +1,23 @@
+services:
+  db:
+    image: mysql:8.4
+    container_name: vigildb
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: vigildb
+      MYSQL_USER: vigil
+      MYSQL_PASSWORD: vigil123
+    ports:
+      - "3307:3306"   # Porta 3307 para não conflitar com MySQL local
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "vigil", "-pvigil123"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  mysql_data:

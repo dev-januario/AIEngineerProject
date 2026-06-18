@@ -1,0 +1,51 @@
+# ─── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+.Python
+
+# ─── Virtual Environment ──────────────────────────────────────────────────────
+.venv/
+.venv_root/
+venv/
+ENV/
+env/
+.env.local
+
+# ─── Environment Variables (NUNCA versione o .env real!) ──────────────────────
+.env
+# Somente o .env.example deve ser versionado
+
+# ─── Testes & Coverage ────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+*.egg-info/
+dist/
+build/
+
+# ─── IDEs ─────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ─── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ─── Alembic ──────────────────────────────────────────────────────────────────
+# As migrations devem ser versionadas, mas não o __pycache__ delas
+alembic/versions/__pycache__/
+
+# ─── Outros ───────────────────────────────────────────────────────────────────
+*.sqlite3
+*.db
+tmp/
+.tmp/

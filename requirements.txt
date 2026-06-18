@@ -1,0 +1,36 @@
+# Web Framework
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+
+# Database — MySQL
+sqlalchemy[asyncio]==2.0.36
+aiomysql==0.2.0
+alembic==1.14.0
+PyMySQL==1.1.1
+
+# AI / LangGraph
+langgraph==0.2.55
+langchain-anthropic==0.3.0
+anthropic==0.40.0
+langchain-core==0.3.25
+
+# Validation & Settings
+pydantic[email]==2.10.3
+pydantic-settings==2.6.1
+python-dotenv==1.0.1
+
+# HTTP Client
+httpx==0.28.1
+
+# Security
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# Utilities
+python-multipart==0.0.20
+
+# Testing
+pytest==8.3.4
+pytest-asyncio==0.24.0
+pytest-mock==3.14.0
+aiosqlite==0.20.0
