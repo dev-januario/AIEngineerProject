@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vigil Summit 2026 — Segurança para a Era da IA</title>
+  <meta name="description" content="Evento corporativo exclusivo para CISOs, CTOs e diretores de TI. Inscreva-se no Vigil Summit 2026 e esteja na vanguarda da segurança cibernética com IA." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+
+  <!-- Canvas de partículas/estrelas -->
+  <canvas id="stars-canvas"></canvas>
+
+  <!-- Navbar -->
+  <nav class="navbar">
+    <div class="nav-brand">
+      <span class="pareto-icon">⊃</span>
+      <span class="brand-text">Vigil<span class="brand-accent">.AI</span></span>
+    </div>
+    <a href="/admin/login.html" class="nav-admin-link">Área Admin →</a>
+  </nav>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="hero-content">
+      <div class="badge-event">
+        <span class="badge-dot"></span>
+        Evento Corporativo Exclusivo · 120 Vagas
+      </div>
+
+      <h1 class="hero-title">
+        Vigil <span class="gradient-text">Summit</span>
+        <br />
+        <span class="hero-subtitle-line">Segurança para a Era da IA</span>
+      </h1>
+
+      <p class="hero-description">
+        O encontro definitivo de <strong>CISOs, CTOs e diretores de TI</strong> para
+        debater o futuro da segurança cibernética com inteligência artificial.
+        Dashboards em tempo real, alertas preditivos e conformidade automática com
+        ISO 27001, LGPD e SOC 2.
+      </p>
+
+      <div class="hero-stats">
+        <div class="stat">
+          <span class="stat-number">120</span>
+          <span class="stat-label">Executivos</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat">
+          <span class="stat-number">8h</span>
+          <span class="stat-label">de Conteúdo</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat">
+          <span class="stat-number">100%</span>
+          <span class="stat-label">Presencial</span>
+        </div>
+      </div>
+
+      <!-- Pareto 80/20 visual badge -->
+      <div class="pareto-badge">
+        <svg width="20" height="20" viewBox="0 0 100 60" fill="none">
+          <rect x="2" y="40" width="15" height="18" fill="#7c6ff7" rx="2"/>
+          <rect x="22" y="25" width="15" height="33" fill="#5b5bd6" rx="2"/>
+          <rect x="42" y="10" width="15" height="48" fill="#4f6ef7" rx="2"/>
+          <rect x="62" y="48" width="15" height="10" fill="#334155" rx="2"/>
+          <rect x="82" y="52" width="15" height="6" fill="#1e293b" rx="2"/>
+          <path d="M2 41 L17 26 L42 11 L62 49 L97 53" stroke="#7c6ff7" stroke-width="2" fill="none"/>
+        </svg>
+        Powered by Pareto · Princípio 80/20 aplicado à segurança
+      </div>
+    </div>
+
+    <!-- Scroll indicator -->
+    <div class="scroll-indicator">
+      <span>Garanta sua vaga</span>
+      <div class="scroll-arrow">↓</div>
+    </div>
+  </section>
+
+  <!-- Features Section -->
+  <section class="features-section">
+    <div class="features-grid">
+      <div class="feature-card" data-delay="0">
+        <div class="feature-icon">🛡️</div>
+        <h3>Postura de Segurança</h3>
+        <p>Monitoramento contínuo com dashboards em tempo real e alertas de vulnerabilidades priorizados por IA.</p>
+      </div>
+      <div class="feature-card" data-delay="100">
+        <div class="feature-icon">🤖</div>
+        <h3>IA que Antecipa Ameaças</h3>
+        <p>Claude 3.5 Sonnet analisa padrões e prevê riscos antes que se tornem incidentes críticos.</p>
+      </div>
+      <div class="feature-card" data-delay="200">
+        <div class="feature-icon">📋</div>
+        <h3>Conformidade Automática</h3>
+        <p>Relatórios de conformidade gerados automaticamente para ISO 27001, LGPD e SOC 2.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Registration Form -->
+  <section class="form-section" id="inscricao">
+    <div class="form-container">
+      <div class="form-header">
+        <h2>Garanta sua Vaga</h2>
+        <p>Inscrição em menos de 60 segundos. Nossa IA cuida do resto.</p>
+      </div>
+
+      <form id="registration-form" novalidate>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="name">Nome Completo <span class="required">*</span></label>
+            <input
+              type="text"
+              id="name"
+              name="name"
+              placeholder="Ex.: Carlos Mendes"
+              required
+              autocomplete="name"
+            />
+            <span class="field-error" id="name-error"></span>
+          </div>
+        </div>
+
+        <div class="form-row two-cols">
+          <div class="form-group">
+            <label for="email">Email Corporativo <span class="required">*</span></label>
+            <input
+              type="email"
+              id="email"
+              name="email"
+              placeholder="carlos@empresa.com.br"
+              required
+              autocomplete="email"
+            />
+            <span class="field-error" id="email-error"></span>
+          </div>
+          <div class="form-group">
+            <label for="phone">WhatsApp (com DDD) <span class="required">*</span></label>
+            <input
+              type="tel"
+              id="phone"
+              name="phone"
+              placeholder="+55 11 99999-9999"
+              required
+              autocomplete="tel"
+            />
+            <span class="field-error" id="phone-error"></span>
+          </div>
+        </div>
+
+        <div class="form-row two-cols">
+          <div class="form-group">
+            <label for="role">Cargo / Função <span class="required">*</span></label>
+            <input
+              type="text"
+              id="role"
+              name="role"
+              placeholder="Ex.: CISO, CTO, Diretor de TI"
+              required
+            />
+            <span class="field-error" id="role-error"></span>
+          </div>
+          <div class="form-group">
+            <label for="company">Empresa <span class="required">*</span></label>
+            <input
+              type="text"
+              id="company"
+              name="company"
+              placeholder="Ex.: TechCorp Brasil"
+              required
+              autocomplete="organization"
+            />
+            <span class="field-error" id="company-error"></span>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group companion-group">
+            <label class="companion-label">Vai levar acompanhante?</label>
+            <div class="toggle-group">
+              <button type="button" id="companion-no" class="toggle-btn active" data-value="false">
+                Não, só eu
+              </button>
+              <button type="button" id="companion-yes" class="toggle-btn" data-value="true">
+                Sim, +1 acompanhante
+              </button>
+            </div>
+            <input type="hidden" id="with_companion" name="with_companion" value="false" />
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group consent-group">
+            <label class="consent-checkbox" for="lgpd_consent">
+              <input type="checkbox" id="lgpd_consent" name="lgpd_consent" required />
+              <span class="checkbox-custom"></span>
+              <span class="consent-text">
+                Autorizo o tratamento dos meus dados pessoais para fins de inscrição e comunicação
+                sobre o Vigil Summit, em conformidade com a <strong>LGPD (Lei 13.709/2018)</strong>.
+              </span>
+            </label>
+            <span class="field-error" id="lgpd-error"></span>
+          </div>
+        </div>
+
+        <div class="form-note">
+          <span class="ai-badge">⚡ IA</span>
+          Nosso agente enriquecerá seu perfil automaticamente com dados públicos para personalizar sua experiência no evento.
+        </div>
+
+        <button type="submit" id="submit-btn" class="submit-button">
+          <span class="submit-text">Garantir Minha Vaga</span>
+          <span class="submit-arrow">→</span>
+          <div class="submit-loader" hidden>
+            <div class="loader-ring"></div>
+          </div>
+        </button>
+
+      </form>
+
+      <!-- Success State -->
+      <div id="success-state" class="success-state" hidden>
+        <div class="success-icon">✅</div>
+        <h3>Inscrição Confirmada!</h3>
+        <p>Você receberá uma confirmação por email e WhatsApp em instantes.</p>
+        <p class="success-sub">Nossa IA já está preparando tudo para sua chegada. Até lá! 🚀</p>
+      </div>
+
+      <!-- Error State -->
+      <div id="error-state" class="error-state" hidden>
+        <div class="error-icon">⚠️</div>
+        <h3 id="error-title">Algo deu errado</h3>
+        <p id="error-message">Tente novamente em alguns instantes.</p>
+        <button onclick="resetForm()" class="retry-btn">Tentar Novamente</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-content">
+      <div class="footer-brand">
+        <span class="pareto-icon">⊃</span>
+        <span>Vigil<span class="brand-accent">.AI</span> · Powered by Pareto</span>
+      </div>
+      <p class="footer-tagline">
+        Inteligência Artificial para Segurança Cibernética Corporativa
+      </p>
+      <p class="footer-legal">
+        Seus dados são protegidos pela LGPD · Nunca compartilhamos suas informações com terceiros.
+      </p>
+    </div>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Login — Vigil Summit</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/admin/admin.css" />
+</head>
+<body class="login-page">
+
+  <div class="login-card">
+    <div class="login-header">
+      <div class="login-logo">
+        <span style="background:linear-gradient(135deg,#3b82f6,#8b5cf6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">Vigil</span><span style="color:#8b5cf6">.AI</span>
+      </div>
+      <p class="login-subtitle">Painel de Administração · Vigil Summit 2026</p>
+    </div>
+
+    <form class="login-form" id="login-form" novalidate>
+      <div class="form-group">
+        <label for="username">Usuário</label>
+        <input type="text" id="username" name="username" placeholder="admin" autocomplete="username" required />
+      </div>
+      <div class="form-group">
+        <label for="password">Senha</label>
+        <input type="password" id="password" name="password" placeholder="••••••••" autocomplete="current-password" required />
+      </div>
+
+      <button type="submit" id="login-btn" class="btn-primary">
+        <span id="login-text">Entrar</span>
+        <span id="login-loading" hidden><span class="spinner"></span></span>
+      </button>
+
+      <div class="login-error" id="login-error" hidden></div>
+    </form>
+  </div>
+
+  <script>
+    // Se já tem token, redireciona
+    if (localStorage.getItem('vigil_admin_token')) {
+      window.location.href = '/admin/dashboard.html';
+    }
+
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('login-btn');
+      const errorEl = document.getElementById('login-error');
+      const loginText = document.getElementById('login-text');
+      const loginLoading = document.getElementById('login-loading');
+
+      btn.disabled = true;
+      loginText.hidden = true;
+      loginLoading.hidden = false;
+      errorEl.hidden = true;
+
+      const body = new URLSearchParams();
+      body.append('username', document.getElementById('username').value);
+      body.append('password', document.getElementById('password').value);
+
+      try {
+        const res = await fetch('/api/v1/admin/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: body.toString(),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          localStorage.setItem('vigil_admin_token', data.access_token);
+          localStorage.setItem('vigil_admin_user', data.username);
+          window.location.href = '/admin/dashboard.html';
+        } else {
+          const err = await res.json().catch(() => ({}));
+          errorEl.textContent = err.detail || 'Credenciais incorretas.';
+          errorEl.hidden = false;
+        }
+      } catch {
+        errorEl.textContent = 'Sem conexão com o servidor.';
+        errorEl.hidden = false;
+      } finally {
+        btn.disabled = false;
+        loginText.hidden = false;
+        loginLoading.hidden = true;
+      }
+    });
+  </script>
+</body>
+</html>

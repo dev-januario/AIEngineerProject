@@ -43,7 +43,6 @@ from app.services.enrichment import enrich_lead_profile
 from app.services.notification import (
     NotificationChannel,
     notify_lead,
-    render_template,
 )
 
 logger = logging.getLogger(__name__)

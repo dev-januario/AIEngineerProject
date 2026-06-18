@@ -89,6 +89,10 @@ class Lead(Base):
     event_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     attended: Mapped[bool | None] = mapped_column(nullable=True)
 
+    # ── Event Registration ────────────────────────────────────────────────────
+    # Se o participante vai levar acompanhante (gatilho de régua de engajamento)
+    with_companion: Mapped[bool] = mapped_column(default=False, nullable=False)
+
     # ── LGPD / Consent ───────────────────────────────────────────────────────
     lgpd_consent: Mapped[bool] = mapped_column(default=False, nullable=False)
     consent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

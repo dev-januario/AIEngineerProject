@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard Admin — Vigil Summit</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/admin/admin.css" />
+</head>
+<body>
+
+  <div class="dashboard-layout">
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-logo">Vigil<span style="color:#8b5cf6">.AI</span></div>
+      <div class="sidebar-subtitle">Painel de Administração</div>
+
+      <ul class="sidebar-nav">
+        <li>
+          <button class="nav-item active" data-panel="overview" onclick="showPanel('overview')">
+            <span class="nav-icon">📊</span> Visão Geral
+          </button>
+        </li>
+        <li>
+          <button class="nav-item" data-panel="event" onclick="showPanel('event')">
+            <span class="nav-icon">🎯</span> Evento
+          </button>
+        </li>
+        <li>
+          <button class="nav-item" data-panel="templates" onclick="showPanel('templates')">
+            <span class="nav-icon">✉️</span> Templates
+          </button>
+        </li>
+        <li>
+          <button class="nav-item" data-panel="leads" onclick="showPanel('leads')">
+            <span class="nav-icon">👥</span> Participantes
+          </button>
+        </li>
+        <li>
+          <button class="nav-item" data-panel="scheduler" onclick="showPanel('scheduler')">
+            <span class="nav-icon">⏱️</span> Agendamento
+          </button>
+        </li>
+      </ul>
+
+      <div class="sidebar-footer">
+        <div style="font-size:0.75rem;color:var(--text-muted);padding:0 0.5rem;margin-bottom:0.5rem">
+          Logado como <strong id="admin-username" style="color:var(--text-secondary)">—</strong>
+        </div>
+        <button class="logout-btn" onclick="logout()">
+          <span>🚪</span> Sair
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+
+      <!-- ── Overview Panel ── -->
+      <div class="content-panel active" id="panel-overview">
+        <div class="panel-header">
+          <h1>Visão Geral</h1>
+          <p>Status do Vigil Summit em tempo real</p>
+        </div>
+
+        <div class="stat-cards" id="overview-stats">
+          <div class="stat-card"><div class="stat-card-label">Inscritos</div><div class="stat-card-value" id="stat-total">—</div></div>
+          <div class="stat-card"><div class="stat-card-label">Confirmados</div><div class="stat-card-value" id="stat-confirmed">—</div></div>
+          <div class="stat-card"><div class="stat-card-label">Enriquecidos</div><div class="stat-card-value" id="stat-enriched">—</div></div>
+          <div class="stat-card"><div class="stat-card-label">Reuniões</div><div class="stat-card-value" id="stat-meetings">—</div></div>
+        </div>
+
+        <div class="section-card">
+          <h2>🎯 Status do Evento</h2>
+          <div id="event-status-summary" style="color:var(--text-secondary);font-size:0.9rem">Carregando...</div>
+        </div>
+
+        <div class="section-card">
+          <h2>⏱️ Próximo Disparo Agendado</h2>
+          <div id="scheduler-summary">
+            <div class="scheduler-box">
+              <div><div class="scheduler-label">Pós-evento disparará em</div><div class="scheduler-countdown" id="countdown-display">Sem job agendado</div></div>
+              <div id="countdown-timer" style="font-size:0.8rem;color:var(--text-muted)"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Event Panel ── -->
+      <div class="content-panel" id="panel-event">
+        <div class="panel-header">
+          <h1>🎯 Gerenciar Evento</h1>
+          <p>Edite os dados do evento e controle o fluxo de comunicação</p>
+        </div>
+
+        <div class="section-card">
+          <h2>Informações do Evento</h2>
+          <form class="admin-form" id="event-form">
+            <div class="form-row">
+              <div>
+                <label>Nome do Evento</label>
+                <input type="text" id="ev-name" placeholder="Vigil Summit — Segurança para a Era da IA" />
+              </div>
+              <div>
+                <label>Status</label>
+                <input type="text" id="ev-status" readonly style="opacity:0.6" />
+              </div>
+            </div>
+            <div class="form-row">
+              <div>
+                <label>Data do Evento</label>
+                <input type="date" id="ev-date" />
+              </div>
+              <div>
+                <label>Horário</label>
+                <input type="time" id="ev-time" />
+              </div>
+            </div>
+            <div class="form-row single">
+              <div>
+                <label>Local</label>
+                <input type="text" id="ev-location" placeholder="São Paulo, SP — Hotel X" />
+              </div>
+            </div>
+            <div class="form-row single">
+              <div>
+                <label>Palestrantes (um por linha)</label>
+                <textarea id="ev-speakers" rows="4" placeholder="João Silva&#10;Maria Costa&#10;Carlos Alves"></textarea>
+              </div>
+            </div>
+            <div class="form-row">
+              <div>
+                <label>Delay pós-evento (minutos)</label>
+                <input type="number" id="ev-delay" min="1" value="3" />
+                <div class="field-hint">Minutos que o sistema aguarda após encerramento para disparar o follow-up. Use 3 para testes.</div>
+              </div>
+            </div>
+            <div class="actions-row">
+              <button type="button" class="btn-save" onclick="saveEvent()">💾 Salvar Alterações</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="section-card">
+          <h2>🔴 Encerrar Evento</h2>
+          <p style="color:var(--text-secondary);font-size:0.88rem;margin-bottom:1.25rem">
+            Ao encerrar, o sistema aguarda o delay configurado e então dispara automaticamente a régua de follow-up para todos os participantes.
+          </p>
+          <div class="actions-row">
+            <button class="btn-danger" onclick="endEventNow()">
+              🛑 Encerrar Agora (<span id="delay-label">3</span> min delay)
+            </button>
+            <div style="display:flex;align-items:center;gap:0.5rem">
+              <input type="datetime-local" id="schedule-end-at" style="background:rgba(255,255,255,0.04);border:1px solid var(--border-subtle);border-radius:6px;padding:0.5rem;color:var(--text-primary);font-family:var(--font);font-size:0.82rem;outline:none" />
+              <button class="btn-outline" onclick="scheduleEnd()">📅 Agendar Encerramento</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Templates Panel ── -->
+      <div class="content-panel" id="panel-templates">
+        <div class="panel-header">
+          <h1>✉️ Templates de Mensagem</h1>
+          <p>Crie e edite as mensagens enviadas automaticamente para os participantes</p>
+        </div>
+
+        <div class="section-card">
+          <div class="templates-header">
+            <h2 style="margin-bottom:0">Templates Ativos</h2>
+            <button class="btn-outline" onclick="openTemplateModal()">+ Novo Template</button>
+          </div>
+          <p style="font-size:0.78rem;color:var(--text-muted);margin:0.5rem 0 1rem">
+            Variáveis disponíveis: <code style="color:var(--purple-glow)">{{NOME}}</code> <code style="color:var(--purple-glow)">{{PRIMEIRO_NOME}}</code> <code style="color:var(--purple-glow)">{{CARGO}}</code> <code style="color:var(--purple-glow)">{{EMPRESA}}</code> <code style="color:var(--purple-glow)">{{DATA_EVENTO}}</code> <code style="color:var(--purple-glow)">{{HORA_EVENTO}}</code> <code style="color:var(--purple-glow)">{{LOCAL_EVENTO}}</code> <code style="color:var(--purple-glow)">{{NOME_EVENTO}}</code> <code style="color:var(--purple-glow)">{{PALESTRANTES}}</code>
+          </p>
+          <div id="templates-list">
+            <div style="color:var(--text-muted);font-size:0.88rem">Carregando templates...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Leads Panel ── -->
+      <div class="content-panel" id="panel-leads">
+        <div class="panel-header">
+          <h1>👥 Participantes</h1>
+          <p>Lista completa de inscritos com status do funil</p>
+        </div>
+
+        <div class="section-card">
+          <div class="leads-filter" id="leads-filter">
+            <button class="filter-btn active" data-filter="all" onclick="filterLeads('all', this)">Todos</button>
+            <button class="filter-btn" data-filter="new" onclick="filterLeads('new', this)">Novos</button>
+            <button class="filter-btn" data-filter="enriched" onclick="filterLeads('enriched', this)">Enriquecidos</button>
+            <button class="filter-btn" data-filter="confirmed" onclick="filterLeads('confirmed', this)">Confirmados</button>
+            <button class="filter-btn" data-filter="meeting_booked" onclick="filterLeads('meeting_booked', this)">Reunião</button>
+          </div>
+          <div style="overflow-x:auto">
+            <table class="leads-table" id="leads-table">
+              <thead>
+                <tr>
+                  <th>Nome</th>
+                  <th>Email</th>
+                  <th>Empresa</th>
+                  <th>Cargo</th>
+                  <th>Status</th>
+                  <th>Acomp.</th>
+                  <th>Inscrito em</th>
+                </tr>
+              </thead>
+              <tbody id="leads-tbody">
+                <tr><td colspan="7" style="color:var(--text-muted);text-align:center;padding:2rem">Carregando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Scheduler Panel ── -->
+      <div class="content-panel" id="panel-scheduler">
+        <div class="panel-header">
+          <h1>⏱️ Agendamento</h1>
+          <p>Controle os disparos automáticos de mensagens</p>
+        </div>
+
+        <div class="section-card">
+          <h2>Status do Scheduler</h2>
+          <div class="scheduler-box" id="scheduler-detail-box">
+            <div>
+              <div class="scheduler-label">Próximo disparo pós-evento</div>
+              <div class="scheduler-countdown" id="scheduler-next-run">Verificando...</div>
+            </div>
+            <button class="btn-outline" onclick="refreshScheduler()">🔄 Atualizar</button>
+          </div>
+          <p style="font-size:0.8rem;color:var(--text-muted);margin-top:0.75rem">
+            Para disparar manualmente, vá ao painel <strong>Evento</strong> e clique em "Encerrar Agora".
+          </p>
+        </div>
+
+        <div class="section-card">
+          <h2>Configurações Rápidas de Teste</h2>
+          <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:1rem">
+            Estes botões facilitam os testes antes do dia 21. O disparo irá para todos os participantes inscritos.
+          </p>
+          <div class="actions-row">
+            <button class="btn-outline" onclick="triggerIn(1)">⚡ Disparar em 1 min</button>
+            <button class="btn-outline" onclick="triggerIn(3)">🕒 Disparar em 3 min</button>
+            <button class="btn-danger" onclick="triggerIn(0.1)">🔴 Disparar Agora</button>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- Template Modal -->
+  <div class="modal-overlay hidden" id="template-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="modal-title">Novo Template</h3>
+        <button class="modal-close" onclick="closeTemplateModal()">✕</button>
+      </div>
+      <form class="admin-form" id="template-form">
+        <input type="hidden" id="tpl-id" />
+        <div class="form-row">
+          <div>
+            <label>Nome do Template</label>
+            <input type="text" id="tpl-name" placeholder="Confirmação de Inscrição" required />
+          </div>
+          <div>
+            <label>Fase</label>
+            <select id="tpl-phase">
+              <option value="confirmation">Confirmação</option>
+              <option value="pre_event">Pré-evento</option>
+              <option value="post_event">Pós-evento</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div>
+            <label>Canal</label>
+            <select id="tpl-channel">
+              <option value="both">Email + WhatsApp</option>
+              <option value="email">Somente Email</option>
+              <option value="whatsapp">Somente WhatsApp</option>
+            </select>
+          </div>
+          <div>
+            <label>Ordem</label>
+            <input type="number" id="tpl-order" value="1" min="1" />
+          </div>
+        </div>
+        <div class="form-row single">
+          <div>
+            <label>Assunto (email)</label>
+            <input type="text" id="tpl-subject" placeholder="Sua inscrição no {{NOME_EVENTO}} foi confirmada!" />
+          </div>
+        </div>
+        <div class="form-row single">
+          <div>
+            <label>Corpo da Mensagem</label>
+            <textarea id="tpl-body" rows="8" placeholder="Olá, {{PRIMEIRO_NOME}}! ..."></textarea>
+          </div>
+        </div>
+        <label style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;cursor:pointer">
+          <input type="checkbox" id="tpl-active" checked />
+          <span style="font-size:0.82rem;color:var(--text-secondary);text-transform:none;letter-spacing:0">Template ativo</span>
+        </label>
+      </form>
+      <div class="modal-actions">
+        <button class="btn-outline" onclick="closeTemplateModal()">Cancelar</button>
+        <button class="btn-save" onclick="saveTemplate()">💾 Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast hidden" id="toast"></div>
+
+  <script src="/admin/admin.js"></script>
+</body>
+</html>

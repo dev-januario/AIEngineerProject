@@ -9,11 +9,11 @@ services:
       MYSQL_USER: vigil
       MYSQL_PASSWORD: vigil123
     ports:
-      - "3307:3306"   # Porta 3307 para não conflitar com MySQL local
+      - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "vigil", "-pvigil123"]
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "vigil", "-pvigil123" ]
       interval: 10s
       timeout: 5s
       retries: 5

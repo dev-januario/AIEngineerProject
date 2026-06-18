@@ -1,10 +1,16 @@
+from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
+
+# Resolve o .env na raiz do projeto (AIEngineerProject/), independente
+# de onde o uvicorn é iniciado (vigil_agent/ ou raiz)
+_HERE = Path(__file__).resolve().parent          # app/core/
+_ENV_FILE = _HERE.parent.parent.parent / ".env"  # → AIEngineerProject/.env
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(_ENV_FILE),
         env_file_encoding="utf-8",
         case_sensitive=False,
     )
@@ -22,16 +28,26 @@ class Settings(BaseSettings):
 
     # Security
     secret_key: str = "change-me-in-production"
-    api_key: str = "vigil-internal-api-key-2024"
+    vigil_api_key: str = "vigil-internal-api-key-2026"
 
     # Twilio (WhatsApp)
     twilio_account_sid: str = ""
     twilio_auth_token: str = ""
     twilio_whatsapp_from: str = "whatsapp:+14155238886"
 
-    # SendGrid (Email)
-    sendgrid_api_key: str = ""
+    # SMTP (Email — Gmail App Password recomendado)
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""  # Gmail App Password
     email_from: str = "noreply@vigil.ai"
+    email_from_name: str = "Vigil Summit"
+
+    # Admin Panel JWT
+    admin_jwt_secret: str = "vigil-admin-secret-change-in-production"
+    admin_jwt_expire_hours: int = 24
+    admin_default_user: str = "admin"
+    admin_default_password: str = "vigil2026"
 
 
 @lru_cache

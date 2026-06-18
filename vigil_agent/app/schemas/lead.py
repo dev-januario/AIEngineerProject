@@ -14,9 +14,11 @@ class LeadBase(BaseModel):
     phone: str | None = Field(None, examples=["+5511991234567"])
     company: str | None = Field(None, examples=["TechCorp Brasil"])
     role: str | None = Field(None, examples=["CISO"])
+    # Campos preenchidos pela IA (enriquecimento) — opcionais no formulário
     company_size: str | None = Field(None, examples=["500-1000"])
     sector: str | None = Field(None, examples=["Financeiro"])
     linkedin_url: str | None = Field(None, examples=["https://linkedin.com/in/carlos-mendes"])
+    with_companion: bool = Field(False, description="Vai levar acompanhante ao evento?")
     lgpd_consent: bool = Field(False, description="Consentimento LGPD obrigatório")
 
     @model_validator(mode="after")
@@ -63,6 +65,7 @@ class LeadRead(BaseModel):
     company_size: str | None
     sector: str | None
     linkedin_url: str | None
+    with_companion: bool
     enrichment_data: dict[str, Any] | None
     qualification_score: float | None
     status: LeadStatus

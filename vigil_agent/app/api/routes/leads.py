@@ -75,8 +75,85 @@ async def _trigger_funnel(lead: Lead) -> None:
     except Exception as e:
         logger.error(f"[Route] Erro no funil background para lead_id={lead.id}: {e}")
 
+async def _send_confirmation(lead: Lead) -> None:
+    """Envia confirmação imediata de inscrição via email e WhatsApp."""
+    from app.db.session import AsyncSessionLocal
+    from app.models.event import Event
+    from app.models.message_template import MessageTemplate, TemplatePhase
+    from app.services.notification import (
+        notify_lead, NotificationChannel, render_template_vars, build_template_vars
+    )
+    from sqlalchemy import select
 
-# ── Endpoints ─────────────────────────────────────────────────────────────────
+    async with AsyncSessionLocal() as db:
+        # Busca evento ativo
+        event_result = await db.execute(select(Event).order_by(Event.id.desc()))
+        event = event_result.scalar_one_or_none()
+        event_dict = {
+            "name": event.name if event else "Vigil Summit",
+            "event_date": event.event_date if event else "A confirmar",
+            "event_time": event.event_time if event else "A confirmar",
+            "location": event.location if event else "A confirmar",
+            "speakers": event.speakers if event else [],
+        }
+
+        # Busca template de confirmação
+        tpl_result = await db.execute(
+            select(MessageTemplate).where(
+                MessageTemplate.phase == TemplatePhase.CONFIRMATION,
+                MessageTemplate.is_active == True,
+            ).order_by(MessageTemplate.sequence_order)
+        )
+        tpl = tpl_result.scalar_one_or_none()
+
+        if not tpl:
+            logger.warning(f"[Confirmation] Nenhum template de confirmação encontrado para lead_id={lead.id}")
+            return
+
+        vars_ = build_template_vars(
+            {"name": lead.name, "role": lead.role, "company": lead.company},
+            event_dict,
+        )
+        body = render_template_vars(tpl.body, vars_)
+        subject = render_template_vars(tpl.subject or "Confirmação de Inscrição", vars_)
+
+        log_entries = []
+
+        # Envia email
+        if lead.email:
+            result = await notify_lead(
+                lead_id=lead.id,
+                channel=NotificationChannel.EMAIL,
+                message=body,
+                subject=subject,
+                email=lead.email,
+                template_name=tpl.name,
+            )
+            log_entries.append({**result, "channel": "email", "sent_at": result.get("sent_at")})
+
+        # Envia WhatsApp
+        if lead.phone:
+            result = await notify_lead(
+                lead_id=lead.id,
+                channel=NotificationChannel.WHATSAPP,
+                message=body,
+                phone=lead.phone,
+                template_name=tpl.name,
+            )
+            log_entries.append({**result, "channel": "whatsapp", "sent_at": result.get("sent_at")})
+
+        # Salva log
+        if log_entries:
+            result = await db.execute(select(Lead).where(Lead.id == lead.id))
+            db_lead = result.scalar_one_or_none()
+            if db_lead:
+                db_lead.communication_log = (db_lead.communication_log or []) + log_entries
+                await db.commit()
+
+    logger.info(f"[Confirmation] Confirmação enviada para lead_id={lead.id}")
+
+
+
 
 @router.post(
     "/",
@@ -109,6 +186,7 @@ async def create_lead(
         company_size=payload.company_size,
         sector=payload.sector,
         linkedin_url=payload.linkedin_url,
+        with_companion=payload.with_companion,
         lgpd_consent=payload.lgpd_consent,
         consent_at=datetime.now(timezone.utc) if payload.lgpd_consent else None,
         status=LeadStatus.NEW,
@@ -119,7 +197,8 @@ async def create_lead(
     await db.flush()  # Garante que o ID é gerado
     await db.refresh(lead)
 
-    # Dispara funil de IA em background (não bloqueia a resposta HTTP)
+    # Dispara confirmação imediata + funil de IA em background
+    background_tasks.add_task(_send_confirmation, lead)
     background_tasks.add_task(_trigger_funnel, lead)
 
     logger.info(f"[Route] Lead criado: id={lead.id} | email={lead.email}")

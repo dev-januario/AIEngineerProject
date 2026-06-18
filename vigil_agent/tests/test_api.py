@@ -104,7 +104,7 @@ async def test_get_lead_with_api_key(client: AsyncClient, sample_lead_payload: d
 
     response = await client.get(
         f"/api/v1/leads/{lead_id}",
-        headers={"X-API-Key": settings.api_key},
+        headers={"X-API-Key": settings.vigil_api_key},
     )
     assert response.status_code == 200
     data = response.json()
@@ -117,7 +117,7 @@ async def test_get_lead_not_found(client: AsyncClient):
     """GET /leads/99999 deve retornar 404."""
     response = await client.get(
         "/api/v1/leads/99999",
-        headers={"X-API-Key": settings.api_key},
+        headers={"X-API-Key": settings.vigil_api_key},
     )
     assert response.status_code == 404
 
@@ -134,7 +134,7 @@ async def test_update_lead(client: AsyncClient, sample_lead_payload: dict):
     response = await client.patch(
         f"/api/v1/leads/{lead_id}",
         json={"event_notes": "Muito interessado em Zero Trust", "attended": True},
-        headers={"X-API-Key": settings.api_key},
+        headers={"X-API-Key": settings.vigil_api_key},
     )
     assert response.status_code == 200
     data = response.json()
@@ -156,7 +156,7 @@ async def test_list_leads(client: AsyncClient, sample_lead_payload: dict):
 
     response = await client.get(
         "/api/v1/leads/",
-        headers={"X-API-Key": settings.api_key},
+        headers={"X-API-Key": settings.vigil_api_key},
     )
     assert response.status_code == 200
     leads = response.json()
