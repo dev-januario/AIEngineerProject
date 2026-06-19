@@ -1,0 +1,41 @@
+Esses são os problemas identificados:
+- Formulário está "OK", porém quando seleciono a opção para levar acompanhante, não permite informar a quantidade de acompanhantes, nem também, permite que eu digite ao menos o email do acompanhante. Neste caso, o email e/ou email do acompanhante devem ser preenchidos, para que o acompanhante receba a notificação e preencha o formulário também.
+
+- Eu ia dizer que a contagem estava errada, mas não está. O acompanhante precisa preencher o formulário também para que a contagem seja efetuada corretamente. Além disso, mesmo sendo acompanhante, é importante saber se esse o acompanhante é um colega de trabalho profissional ou se é apenas algum amigo, ou se é algum membro de familia, como esposo, esposa, filho, filha, etc. Mas, não sei se vem ao caso, pois o importante é que ele preencha o formulário também para que consiga garantir sua vaga/seu assento.
+
+- Atualmente, não sei se é porque a IA ainda não está funcionando por falta de token, mas os dados não estão sendo preenchidos automaticamente quando digitamos o usuário do Linkedin - isso é importante.
+
+- Não sei se eu não soube usar, mas dentro da área de administração, existem dois campos que não parecem estar funcionando, que seria a área de "Encerrar Evento" e "Configurações Rápidas de Teste", pois os botões estão lá, mas não fica claro o motivo pelo qual estão ali e também, não parecem estar funcionando, lembrando que o sistema, precisa ser feito para que as pessoas tenha um fácil manuseio, pois quando fica complicado, as pessoas acabam não utilizando o sistema e preferem fazer manualmente mesmo. E por um evento de 120 pessoas, acho que não seria legal.
+
+- Fiz um agendamento e recebi uma mensagem. Pelo o que percebi é que ele manda mensagem para todos os leads, mas de forma automatica, ou seja, é a mesma mensagem para todos, mas o correto deveria saber o seguinte: A presença desse lead foi confirmada no dia do evento? Se caso ele não foi, é importante mandar uma mensagem de conforto, entende? E se ele foi, é importante mandar uma mensagem de agradecimento, entende?
+
+- Percebi que as mensagens já estão setadas, mas não é esse o intuito. É de extrema importancia que as mensagens sejam enviadas através da IA. 
+
+- Quando acessamos a área de administração, não conseguimos voltar para a área principal sem ter que alterar o link e isso pode ser prejudicial para o uso do usuário final. Além disso, o botão só deve aparecer para administradores, ou seja, não deve aparecer para os leads. Podemos criar uma regrinha para isso. Uma ideia que tive é criar links separados, o que já acontece, mas remover o botão de onde está hoje. Para acessar a área de administração, só é permitido através do link diferente. Como não temos um SSO ou algo que dê para segregar o acesso, acredito que links separados seria uma ótima opção.
+
+- "Geração de leads qualificados: é difícil encontrar e capturar o contato certo" - Precisamos encontrar esse público, porque se eu digito qualquer coisa ou digito qualquer cargo, ele vai aceitar. Precisamos lembrar que esse evento é para pessoas que trabalham com segurança da informação, ou seja, CISOs, CTOs, diretores de TI e gestores de risco. E se caso não tiverem esse cargo? Mandamos um "grande abraço"? Ou um email informando que o cargo não é adequado para o evento? Não sei... Não queria ser grosso e rejeitar, mas não podemos deixar qualquer um entrar no evento, já que é um evento fechado e específico para um público.
+
+- "No-show: em média 40–60% dos inscritos não comparecem sem uma régua de engajamento eficaz" - Eu preciso entender o que é essa régua de engajamento eficaz.
+
+- "Follow-up frio: a maioria dos contatos pós-evento é genérica, sem personalização, e converte pouco" - Precisamos fazer com que a IA capriche nisso. Como comentado um pouco acima, atualmente, é um email genérico, sem nada específico, sem saber que a pessoa esteve presente no evento. Acho que seria legal deixar um formulário bem rápido para feedback, até mesmo no email ou no WhatsApp para não tomar muito tempo.
+
+- A fase 1 está completa, mas ainda precisa ajustar alguns pontos.
+
+- A fase 2 está em desenvolvimento e é onde precisamos focar na próxima modificação: "Antes de qualquer comunicação, o agente deve enriquecer o perfil do lead com informações disponíveis publicamente (cargo real, empresa, setor, tamanho da empresa, presença em redes profissionais, sinais de interesse em segurança). Esse enriquecimento deve alimentar a personalização de todas as comunicações seguintes."
+
+- A fase 3 está um pouco desenvolvida, mas ainda precisamos modificar bastantes coisas: 
+"O agente deve conduzir uma sequência de comunicações proativas entre a inscrição e o dia do evento, com o objetivo de:
+●​ Confirmar presença
+●​ Reduzir no-show (meta: taxa de comparecimento acima de 70%)
+●​ Criar antecipação e relevância em torno do conteúdo do evento
+O candidato deve inventar as regras de negócio dessa régua (ex.: lógica de confirmação de acompanhante, mensagem diferente para quem não abriu a anterior, gatilho por proximidade da data). Não existe resposta certa — queremos ver o raciocínio."
+
+- A fase 4 também está um pouco desenvolvida, mas ainda precisa melhorar bastante:
+"Após o evento, o agente deve iniciar uma sequência de follow-up personalizada com o objetivo de agendar uma reunião comercial para apresentação da plataforma Vigil.AI. A abordagem deve usar o contexto do evento (o que o lead viu, o que demonstrou interesse) para personalizar a comunicação".
+
+- Um lembrete: Devemos explicar os meios de comunicação, porque foram utilizados. Na minha opinião, acho muito válido o uso de WhatsApp, mas olhando para o Público, identificamos que são diretores, CTO, etc. da área de segurança, ou seja, é muito provável que acessam muito o email e também, é muito provável que usem muito o WhatsApp. Só que há casos e casos, pois meu diretor atual demora muito para responder um email, então pode ser que a caixa de email vive cheia e também as mensagens no WhatsApp também. Com isso, achei que seria melhor combinar o email e o WhatsApp, pois em algum momento, aquela mensagem vai ser visualizada. Pelo o Telegram, seria bem mais fácil por causa das APIs que já possuem, a criação de bots é bem mais simples, mas no Brasil, não é muito comum o uso. Então, por mais que seja uma ótima ideia, não sei se é a melhor opção para esse público. 
+
+- Atualmente, na área de administração não temos esse cenário: "Painel de monitoramento simples mostrando status dos leads no funil (inscritos,
+confirmados, presentes, reuniões agendadas)". Obs.: Para confirmar a presença, poderíamos gerar um QR CODE em que o lead durante o evento, escaneei o QR CODE e assim, confirmaria a presença. Basta apenas informar o email que usou para cadastrar no evento.
+
+- O restante, farei após o desenvolvimento das fases acima.

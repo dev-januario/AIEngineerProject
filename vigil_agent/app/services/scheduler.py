@@ -30,6 +30,36 @@ def start_scheduler():
         scheduler.start()
         logger.info("✅ Scheduler APScheduler iniciado")
 
+    # Job: polling de emails inbound (respostas de leads)
+    _register_imap_polling()
+
+
+def _register_imap_polling():
+    """Registra (ou re-registra) o job de IMAP polling no scheduler."""
+    from app.core.config import settings
+    from app.services.imap_poller import poll_inbox_for_replies
+
+    job_id = "imap_inbox_polling"
+    interval = settings.imap_poll_interval_seconds
+
+    if not settings.smtp_user or not settings.smtp_password:
+        logger.info("[Scheduler] SMTP não configurado — IMAP polling desativado")
+        return
+
+    # Remove job antigo se existir
+    if scheduler.get_job(job_id):
+        scheduler.remove_job(job_id)
+
+    scheduler.add_job(
+        poll_inbox_for_replies,
+        "interval",
+        seconds=interval,
+        id=job_id,
+        replace_existing=True,
+        next_run_time=None,  # não executa imediatamente no startup, aguarda o primeiro intervalo
+    )
+    logger.info(f"📬 [Scheduler] IMAP polling registrado — intervalo: {interval}s")
+
 
 def stop_scheduler():
     """Para o scheduler no shutdown da aplicação."""

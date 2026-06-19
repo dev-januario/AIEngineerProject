@@ -49,21 +49,54 @@ def render_template_vars(body: str, variables: dict) -> str:
     return re.sub(r"\{\{([^}]+)\}\}", replace_match, body)
 
 
+MESES_PT = [
+    "", "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+    "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"
+]
+
+
+def format_date_pt(date_str: str | None, time_str: str | None = None) -> str:
+    """
+    Converte '2026-07-15' + '09:00' → '15 de julho de 2026 às 09h00'.
+    Aceita formato ISO (YYYY-MM-DD) ou strings livres.
+    """
+    if not date_str:
+        return "A confirmar"
+    try:
+        parts = date_str.strip().split("-")
+        if len(parts) == 3:
+            dia, mes_num, ano = int(parts[2]), int(parts[1]), parts[0]
+            mes_nome = MESES_PT[mes_num]
+            data_formatada = f"{dia} de {mes_nome} de {ano}"
+            if time_str:
+                hora = time_str.strip().replace(":", "h")
+                return f"{data_formatada} às {hora}"
+            return data_formatada
+    except Exception:
+        pass
+    return date_str  # fallback: retorna como veio
+
+
 def build_template_vars(lead: dict, event: dict | None = None) -> dict:
     """Constrói o dicionário de variáveis para substituição no template."""
     first_name = (lead.get("name") or "").split()[0] if lead.get("name") else "Participante"
     speakers = event.get("speakers") or [] if event else []
     speakers_str = "\n- ".join(speakers) if speakers else "A confirmar"
 
+    raw_date  = event.get("event_date")  if event else None
+    raw_time  = event.get("event_time")  if event else None
+    data_ptbr = format_date_pt(raw_date)   # só a data, sem horário
+    hora_ptbr = (raw_time or "A confirmar").replace(":", "h") if raw_time else "A confirmar"
+
     return {
-        "NOME": lead.get("name") or "Participante",
+        "NOME":         lead.get("name") or "Participante",
         "PRIMEIRO_NOME": first_name,
-        "CARGO": lead.get("role") or "Executivo",
-        "EMPRESA": lead.get("company") or "sua empresa",
-        "DATA_EVENTO": event.get("event_date") or "A confirmar" if event else "A confirmar",
-        "HORA_EVENTO": event.get("event_time") or "A confirmar" if event else "A confirmar",
+        "CARGO":        lead.get("role") or "Executivo",
+        "EMPRESA":      lead.get("company") or "sua empresa",
+        "DATA_EVENTO":  data_ptbr,
+        "HORA_EVENTO":  hora_ptbr,
         "LOCAL_EVENTO": event.get("location") or "A confirmar" if event else "A confirmar",
-        "NOME_EVENTO": event.get("name") or "Vigil Summit" if event else "Vigil Summit",
+        "NOME_EVENTO":  event.get("name") or "Vigil Summit" if event else "Vigil Summit",
         "PALESTRANTES": f"\n- {speakers_str}" if speakers else "A confirmar",
     }
 

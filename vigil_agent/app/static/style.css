@@ -603,4 +603,183 @@ input.field-invalid {
   .stat-number { font-size: 1.4rem; }
   .features-grid { grid-template-columns: 1fr; }
   .toggle-group { flex-direction: column; }
+  .linkedin-toggle-group { flex-direction: column; }
 }
+
+/* ── Spots Counter ──────────────────────────────────────────── */
+.spots-counter {
+  margin-top: 1.5rem;
+  padding: 1rem 1.25rem;
+  background: rgba(59, 130, 246, 0.05);
+  border: 1px solid rgba(59, 130, 246, 0.12);
+  border-radius: var(--radius-md);
+}
+
+.spots-bar-wrap {
+  height: 6px;
+  background: rgba(255,255,255,0.07);
+  border-radius: 100px;
+  overflow: hidden;
+  margin-bottom: 0.6rem;
+}
+
+.spots-bar-fill {
+  height: 100%;
+  background: var(--accent-gradient);
+  border-radius: 100px;
+  transition: width 0.6s ease;
+  width: 0%;
+}
+
+.spots-bar-fill.warning {
+  background: linear-gradient(90deg, #f59e0b, #ef4444);
+}
+.spots-bar-fill.urgent {
+  background: linear-gradient(90deg, #ef4444, #dc2626);
+  animation: pulse-bar 1.5s ease-in-out infinite;
+}
+@keyframes pulse-bar {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.spots-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.spots-remaining {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--purple-glow);
+}
+
+.spots-total {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* ── Section Label ──────────────────────────────────────────── */
+.section-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  flex-wrap: wrap;
+  margin-bottom: 0.6rem;
+}
+
+.section-label-icon { font-size: 0.95rem; }
+
+.section-label-hint {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  width: 100%;
+  margin-top: 0.1rem;
+}
+
+/* ── LinkedIn Toggle ────────────────────────────────────────── */
+.linkedin-toggle-group {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.linkedin-toggle-group .toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.88rem;
+  padding: 0.7rem 1.1rem;
+}
+
+.toggle-icon { font-size: 1rem; }
+
+/* ── LinkedIn Input with prefix ─────────────────────────────── */
+.linkedin-input-wrap {
+  display: flex;
+  align-items: center;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  transition: all 0.25s;
+}
+
+.linkedin-input-wrap:focus-within {
+  border-color: var(--blue-bright);
+  background: rgba(59, 130, 246, 0.06);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
+.linkedin-prefix {
+  padding: 0.85rem 0.75rem 0.85rem 1rem;
+  background: rgba(139, 92, 246, 0.08);
+  border-right: 1px solid var(--border-subtle);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.linkedin-input-wrap input {
+  flex: 1;
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  padding-left: 0.75rem;
+}
+
+.linkedin-input-wrap input:focus {
+  border: none;
+  box-shadow: none;
+  background: transparent;
+}
+
+.field-hint {
+  font-size: 0.73rem;
+  color: var(--text-muted);
+  margin-top: 0.1rem;
+  font-style: italic;
+}
+
+/* ── Select ─────────────────────────────────────────────────── */
+select {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: 0.95rem;
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2364748b' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  background-size: 12px;
+  transition: all 0.25s;
+}
+
+select:focus {
+  border-color: var(--blue-bright);
+  background-color: rgba(59, 130, 246, 0.06);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
+select option {
+  background: #0d1224;
+  color: var(--text-primary);
+}
+

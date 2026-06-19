@@ -28,6 +28,7 @@ class LeadStatus(str, enum.Enum):
     NO_SHOW = "no_show"
     FOLLOWED_UP = "followed_up"
     MEETING_BOOKED = "meeting_booked"
+    OUT_OF_ICP = "out_of_icp"
 
 
 class FunnelPhase(str, enum.Enum):
@@ -66,13 +67,13 @@ class Lead(Base):
 
     # ── Funnel State ──────────────────────────────────────────────────────────
     status: Mapped[LeadStatus] = mapped_column(
-        Enum(LeadStatus, name="leadstatus"),
+        Enum(LeadStatus, name="leadstatus", values_callable=lambda x: [e.value for e in x]),
         default=LeadStatus.NEW,
         nullable=False,
         index=True,
     )
     funnel_phase: Mapped[FunnelPhase] = mapped_column(
-        Enum(FunnelPhase, name="funnelphase"),
+        Enum(FunnelPhase, name="funnelphase", values_callable=lambda x: [e.value for e in x]),
         default=FunnelPhase.CAPTURE,
         nullable=False,
         index=True,

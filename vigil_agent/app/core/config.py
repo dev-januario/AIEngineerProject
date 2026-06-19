@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     email_from: str = "noreply@vigil.ai"
     email_from_name: str = "Vigil Summit"
 
+    # IMAP (polling de replies — usa mesmas credenciais do SMTP Gmail)
+    imap_host: str = "imap.gmail.com"
+    imap_port: int = 993
+    imap_poll_interval_seconds: int = 60  # verifica a cada 60s
+
     # Admin Panel JWT
     admin_jwt_secret: str = "vigil-admin-secret-change-in-production"
     admin_jwt_expire_hours: int = 24

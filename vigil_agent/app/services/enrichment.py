@@ -4,7 +4,7 @@ Enrichment Service
 Responsável por enriquecer o perfil do lead com dados públicos antes de qualquer contato.
 
 Em produção, integraria com APIs como:
-- Hunter.io (verificação de email corporativo)
+- Hunter.io (verificação de email principal)
 - Clearbit (cargo, tamanho da empresa)
 - LinkedIn Sales Navigator (presença e atividade profissional)
 

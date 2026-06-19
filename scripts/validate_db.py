@@ -2,14 +2,19 @@
 """
 validate_db.py — Script de Validação do Banco de Dados MySQL
 =============================================================
-Executa duas verificações críticas antes de subir a aplicação:
+Executa verificações críticas antes de subir a aplicação:
 
   1. Testa a conexão com o MySQL
-  2. Verifica se a tabela `leads` existe. Se não existir, cria automaticamente.
+  2. Verifica se TODAS as tabelas existem. Se não existirem, cria automaticamente.
+
+Tabelas gerenciadas:
+  - leads             → ciclo de vida completo dos participantes
+  - events            → dados do evento Vigil Summit
+  - message_templates → templates editáveis com suporte a variáveis
+  - admin_users       → usuários do painel administrativo
 
 Uso:
   python scripts/validate_db.py
-  python scripts/validate_db.py --create-only
   python scripts/validate_db.py --check-only
 
 Variáveis de ambiente (lidas do .env na raiz do projeto):
@@ -22,7 +27,6 @@ import os
 import sys
 from pathlib import Path
 
-# Garante que o script encontra o .env na raiz do projeto
 ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT_DIR / "vigil_agent"))
 
@@ -30,24 +34,17 @@ try:
     from dotenv import load_dotenv
     load_dotenv(ROOT_DIR / ".env")
 except ImportError:
-    pass  # python-dotenv não instalado; lê as variáveis diretamente do ambiente
+    pass
 
 import aiomysql
+
 
 # ── Configuração ──────────────────────────────────────────────────────────────
 
 def _parse_mysql_url(url: str) -> dict:
-    """
-    Extrai host, port, user, password e database de uma DATABASE_URL no formato:
-      mysql+aiomysql://user:password@host:port/database
-    """
-    # Remove o prefixo do driver
     url = url.replace("mysql+aiomysql://", "").replace("mysql://", "")
-
-    # user:password@host:port/db
     credentials, rest = url.split("@", 1)
     user, password = credentials.split(":", 1)
-
     host_port, database = rest.split("/", 1)
     if ":" in host_port:
         host, port = host_port.split(":", 1)
@@ -55,45 +52,33 @@ def _parse_mysql_url(url: str) -> dict:
     else:
         host = host_port
         port = 3306
-
-    return {
-        "host": host,
-        "port": port,
-        "user": user,
-        "password": password,
-        "db": database,
-    }
+    return {"host": host, "port": port, "user": user, "password": password, "db": database}
 
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
     "mysql+aiomysql://vigil:vigil123@localhost:3306/vigildb",
 )
-
 DB_PARAMS = _parse_mysql_url(DATABASE_URL)
 
-# ── DDL da tabela `leads` ─────────────────────────────────────────────────────
 
-CREATE_TABLE_SQL = """
+# ── DDL de todas as tabelas ───────────────────────────────────────────────────
+
+TABLES: list[tuple[str, str]] = []
+
+TABLES.append(("leads", """
 CREATE TABLE IF NOT EXISTS leads (
-    -- Identidade
     id              INT             NOT NULL AUTO_INCREMENT,
     name            VARCHAR(255)    NOT NULL,
     email           VARCHAR(255)    NOT NULL UNIQUE,
     phone           VARCHAR(50)     NULL,
-
-    -- Contexto profissional
     company         VARCHAR(255)    NULL,
     role            VARCHAR(255)    NULL,
     company_size    VARCHAR(50)     NULL,
     sector          VARCHAR(100)    NULL,
     linkedin_url    VARCHAR(500)    NULL,
-
-    -- Enriquecimento
-    enrichment_data     JSON        NULL COMMENT 'Dados enriquecidos (cargo, setor, interesses)',
+    enrichment_data     JSON        NULL COMMENT 'Dados enriquecidos pelo agente de IA',
     qualification_score FLOAT       NULL COMMENT 'Score ICP de 0.0 a 1.0',
-
-    -- Estado do funil
     status          ENUM(
                         'new', 'enriched', 'contacted', 'confirmed',
                         'declined', 'no_response', 'attended', 'no_show',
@@ -102,24 +87,16 @@ CREATE TABLE IF NOT EXISTS leads (
     funnel_phase    ENUM(
                         'capture', 'enrichment', 'pre_event', 'post_event', 'closed'
                     ) NOT NULL DEFAULT 'capture',
-
-    -- Histórico de comunicação
     communication_log   JSON        NULL COMMENT 'Log de mensagens enviadas e recebidas',
     last_contacted_at   DATETIME    NULL,
     contact_attempts    INT         NOT NULL DEFAULT 0,
-
-    -- Contexto pós-evento
-    event_notes     TEXT            NULL COMMENT 'Anotações capturadas durante o evento',
-    attended        TINYINT(1)      NULL COMMENT '1=compareceu, 0=não compareceu',
-
-    -- LGPD
+    event_notes     TEXT            NULL,
+    attended        TINYINT(1)      NULL,
+    with_companion  TINYINT(1)      NOT NULL DEFAULT 0,
     lgpd_consent    TINYINT(1)      NOT NULL DEFAULT 0,
     consent_at      DATETIME        NULL,
-
-    -- Timestamps
     created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-
     PRIMARY KEY (id),
     INDEX idx_email         (email),
     INDEX idx_status        (status),
@@ -127,19 +104,73 @@ CREATE TABLE IF NOT EXISTS leads (
     INDEX idx_created_at    (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   COMMENT='Leads do evento Vigil Summit — ciclo de vida completo do funil';
-"""
+"""))
+
+TABLES.append(("events", """
+CREATE TABLE IF NOT EXISTS events (
+    id                          INT             NOT NULL AUTO_INCREMENT,
+    name                        VARCHAR(255)    NOT NULL DEFAULT 'Vigil Summit',
+    event_date                  VARCHAR(50)     NULL     COMMENT 'Data ex.: 2026-07-15',
+    event_time                  VARCHAR(20)     NULL     COMMENT 'Horario ex.: 09:00',
+    location                    VARCHAR(500)    NULL,
+    description                 TEXT            NULL,
+    speakers                    JSON            NULL     COMMENT 'Lista de palestrantes',
+    post_event_delay_minutes    INT             NOT NULL DEFAULT 3,
+    status                      ENUM('draft', 'active', 'ended') NOT NULL DEFAULT 'active',
+    scheduled_end_at            DATETIME        NULL,
+    ended_at                    DATETIME        NULL,
+    created_at                  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at                  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    INDEX idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='Dados do evento Vigil Summit';
+"""))
+
+TABLES.append(("message_templates", """
+CREATE TABLE IF NOT EXISTS message_templates (
+    id              INT             NOT NULL AUTO_INCREMENT,
+    name            VARCHAR(255)    NOT NULL,
+    phase           ENUM('pre_event', 'confirmation', 'post_event', 'reply') NOT NULL,
+    channel         ENUM('email', 'whatsapp', 'both') NOT NULL,
+    subject         VARCHAR(500)    NULL,
+    body            TEXT            NOT NULL,
+    sequence_order  INT             NOT NULL DEFAULT 1,
+    is_active       TINYINT(1)      NOT NULL DEFAULT 1,
+    created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    INDEX idx_phase  (phase),
+    INDEX idx_active (is_active)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='Templates de mensagem editaveis pelo painel administrativo';
+"""))
+
+TABLES.append(("admin_users", """
+CREATE TABLE IF NOT EXISTS admin_users (
+    id              INT             NOT NULL AUTO_INCREMENT,
+    username        VARCHAR(100)    NOT NULL UNIQUE,
+    hashed_password VARCHAR(255)    NOT NULL,
+    full_name       VARCHAR(255)    NULL,
+    is_active       TINYINT(1)      NOT NULL DEFAULT 1,
+    created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    INDEX idx_username (username)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='Usuarios com acesso ao painel administrativo do Vigil Summit';
+"""))
 
 
 # ── 1. Teste de Conexão ───────────────────────────────────────────────────────
 
 async def check_connection() -> bool:
-    """Verifica se o MySQL está acessível com as credenciais configuradas."""
     print("\n" + "=" * 60)
-    print("  VERIFICAÇÃO 1 — Conexão com o MySQL")
+    print("  VERIFICACAO 1 — Conexao com o MySQL")
     print("=" * 60)
     print(f"  Host     : {DB_PARAMS['host']}:{DB_PARAMS['port']}")
     print(f"  Database : {DB_PARAMS['db']}")
-    print(f"  Usuário  : {DB_PARAMS['user']}")
+    print(f"  Usuario  : {DB_PARAMS['user']}")
     print("-" * 60)
 
     try:
@@ -154,40 +185,34 @@ async def check_connection() -> bool:
         async with conn.cursor() as cur:
             await cur.execute("SELECT VERSION()")
             version = (await cur.fetchone())[0]
-
         conn.close()
-        print(f"  ✅ Conexão estabelecida com sucesso!")
-        print(f"  📌 Versão do MySQL: {version}")
+        print(f"  OK  Conexao estabelecida com sucesso!")
+        print(f"  MySQL: {version}")
         return True
 
     except aiomysql.OperationalError as e:
         errno, msg = e.args
-        print(f"  ❌ Falha na conexão!")
-        print(f"  Erro [{errno}]: {msg}")
-        print()
+        print(f"  ERRO Falha na conexao! [{errno}]: {msg}")
         if errno == 1045:
-            print("  💡 Dica: Verifique usuário/senha no seu .env")
+            print("  Dica: Verifique usuario/senha no .env")
         elif errno == 2003:
-            print("  💡 Dica: MySQL não está rodando. Execute: docker compose up -d")
+            print("  Dica: MySQL nao esta rodando. Execute: docker compose up -d")
         elif errno == 1049:
-            print(f"  💡 Dica: O banco '{DB_PARAMS['db']}' não existe. Crie-o primeiro.")
+            print(f"  Dica: Banco '{DB_PARAMS['db']}' nao existe. Crie-o primeiro.")
         return False
-
     except Exception as e:
-        print(f"  ❌ Erro inesperado: {type(e).__name__}: {e}")
+        print(f"  ERRO inesperado: {type(e).__name__}: {e}")
         return False
 
 
-# ── 2. Verificação e Criação da Tabela ────────────────────────────────────────
+# ── 2. Verificacao e Criacao das Tabelas ─────────────────────────────────────
 
-async def check_and_create_table() -> bool:
-    """
-    Verifica se a tabela `leads` existe.
-    Se não existir, cria automaticamente com todos os campos necessários.
-    """
+async def check_and_create_tables() -> bool:
     print("\n" + "=" * 60)
-    print("  VERIFICAÇÃO 2 — Tabela `leads`")
+    print("  VERIFICACAO 2 — Estrutura das Tabelas")
     print("=" * 60)
+
+    all_ok = True
 
     try:
         conn = await aiomysql.connect(
@@ -199,136 +224,85 @@ async def check_and_create_table() -> bool:
             connect_timeout=5,
         )
 
-        async with conn.cursor() as cur:
-            # Verifica se a tabela existe
-            await cur.execute(
-                "SELECT COUNT(*) FROM information_schema.tables "
-                "WHERE table_schema = %s AND table_name = 'leads'",
-                (DB_PARAMS["db"],),
-            )
-            exists = (await cur.fetchone())[0] > 0
-
-            if exists:
-                # Tabela existe — verifica as colunas
-                print("  ✅ Tabela `leads` já existe!")
-                await cur.execute("DESCRIBE leads")
-                columns = await cur.fetchall()
-                print(f"  📋 Colunas encontradas ({len(columns)}):")
-                for col in columns:
-                    col_name, col_type, nullable, key, default, extra = col
-                    key_info = f" [{key}]" if key else ""
-                    print(f"     • {col_name:<25} {col_type}{key_info}")
-
-                # Conta registros existentes
-                await cur.execute("SELECT COUNT(*) FROM leads")
-                total = (await cur.fetchone())[0]
-                print(f"\n  📊 Registros na tabela: {total}")
-
-            else:
-                # Tabela não existe — cria agora
-                print("  ⚠️  Tabela `leads` NÃO encontrada.")
-                print("  🔧 Criando tabela com todos os campos...")
-                print()
-
-                await cur.execute(CREATE_TABLE_SQL)
-                await conn.commit()
-
-                # Confirma criação
+        for table_name, ddl in TABLES:
+            print(f"\n  Tabela `{table_name}`:")
+            async with conn.cursor() as cur:
                 await cur.execute(
                     "SELECT COUNT(*) FROM information_schema.tables "
-                    "WHERE table_schema = %s AND table_name = 'leads'",
-                    (DB_PARAMS["db"],),
+                    "WHERE table_schema = %s AND table_name = %s",
+                    (DB_PARAMS["db"], table_name),
                 )
-                created = (await cur.fetchone())[0] > 0
+                exists = (await cur.fetchone())[0] > 0
 
-                if created:
-                    print("  ✅ Tabela `leads` criada com sucesso!")
-                    await cur.execute("DESCRIBE leads")
-                    columns = await cur.fetchall()
-                    print(f"  📋 Colunas criadas ({len(columns)}):")
-                    for col in columns:
-                        col_name, col_type, nullable, key, default, extra = col
-                        key_info = f" [{key}]" if key else ""
-                        print(f"     • {col_name:<25} {col_type}{key_info}")
+                if exists:
+                    await cur.execute(f"SELECT COUNT(*) FROM `{table_name}`")
+                    total = (await cur.fetchone())[0]
+                    print(f"     OK — Existe com {total} registro(s)")
                 else:
-                    print("  ❌ Falha ao criar a tabela. Verifique as permissões do usuário MySQL.")
-                    conn.close()
-                    return False
+                    print(f"     AVISO — Nao encontrada. Criando...")
+                    await cur.execute(ddl)
+                    await conn.commit()
+                    await cur.execute(
+                        "SELECT COUNT(*) FROM information_schema.tables "
+                        "WHERE table_schema = %s AND table_name = %s",
+                        (DB_PARAMS["db"], table_name),
+                    )
+                    created = (await cur.fetchone())[0] > 0
+                    if created:
+                        print(f"     OK — Criada com sucesso!")
+                    else:
+                        print(f"     ERRO — Falha ao criar. Verifique as permissoes do usuario MySQL.")
+                        all_ok = False
 
         conn.close()
-        return True
-
-    except aiomysql.OperationalError as e:
-        errno, msg = e.args
-        print(f"  ❌ Erro de operação [{errno}]: {msg}")
-        if errno == 1142:
-            print("  💡 Dica: O usuário não tem permissão para criar tabelas.")
-            print(f"  Execute como root: GRANT ALL ON {DB_PARAMS['db']}.* TO '{DB_PARAMS['user']}'@'%';")
-        return False
 
     except Exception as e:
-        print(f"  ❌ Erro inesperado: {type(e).__name__}: {e}")
+        print(f"\n  ERRO: {type(e).__name__}: {e}")
         return False
+
+    return all_ok
 
 
 # ── Runner Principal ──────────────────────────────────────────────────────────
 
-async def main(check_only: bool = False, create_only: bool = False) -> int:
-    """
-    Executa as verificações em sequência.
-    Retorna 0 em caso de sucesso, 1 em caso de falha.
-    """
+async def main(check_only: bool = False) -> int:
     print()
-    print("╔══════════════════════════════════════════════════════════╗")
-    print("║       Vigil.AI — Validação do Banco de Dados MySQL       ║")
-    print("╚══════════════════════════════════════════════════════════╝")
+    print("=" * 60)
+    print("   Vigil.AI — Validacao do Banco de Dados MySQL")
+    print("=" * 60)
 
-    # ── Passo 1: Conexão ──────────────────────────────────────────
-    if not create_only:
-        connection_ok = await check_connection()
-        if not connection_ok:
-            print("\n❌ Validação interrompida: banco de dados inacessível.\n")
-            return 1
+    connection_ok = await check_connection()
+    if not connection_ok:
+        print("\nERRO: Banco de dados inacessivel.\n")
+        return 1
 
-        if check_only:
-            print("\n✅ Verificação de conexão concluída (--check-only).\n")
-            return 0
+    if check_only:
+        print("\nOK: Verificacao de conexao concluida (--check-only).\n")
+        return 0
 
-    # ── Passo 2: Tabela ───────────────────────────────────────────
-    table_ok = await check_and_create_table()
+    tables_ok = await check_and_create_tables()
 
     print()
     print("=" * 60)
-    if table_ok:
-        print("  ✅ Todas as verificações passaram! Sistema pronto.")
+    if tables_ok:
+        print("  OK: Todas as verificacoes passaram! Sistema pronto.")
     else:
-        print("  ❌ Uma ou mais verificações falharam. Veja os erros acima.")
+        print("  ERRO: Uma ou mais verificacoes falharam.")
     print("=" * 60)
     print()
 
-    return 0 if table_ok else 1
+    return 0 if tables_ok else 1
 
-
-# ── Entry Point ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Valida conexão e estrutura da tabela MySQL do Vigil.AI"
+        description="Valida conexao e estrutura do banco MySQL do Vigil.AI"
     )
     parser.add_argument(
         "--check-only",
         action="store_true",
-        help="Apenas verifica a conexão, sem criar/verificar tabelas",
-    )
-    parser.add_argument(
-        "--create-only",
-        action="store_true",
-        help="Pula o teste de conexão e vai direto para criação da tabela",
+        help="Apenas verifica a conexao, sem criar/verificar tabelas",
     )
     args = parser.parse_args()
-
-    exit_code = asyncio.run(main(
-        check_only=args.check_only,
-        create_only=args.create_only,
-    ))
+    exit_code = asyncio.run(main(check_only=args.check_only))
     sys.exit(exit_code)

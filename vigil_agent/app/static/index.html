@@ -1,15 +1,19 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Vigil Summit 2026 — Segurança para a Era da IA</title>
-  <meta name="description" content="Evento corporativo exclusivo para CISOs, CTOs e diretores de TI. Inscreva-se no Vigil Summit 2026 e esteja na vanguarda da segurança cibernética com IA." />
+  <meta name="description"
+    content="Evento corporativo exclusivo para CISOs, CTOs e diretores de TI. Inscreva-se no Vigil Summit 2026 e esteja na vanguarda da segurança cibernética com IA." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
+    rel="stylesheet" />
   <link rel="stylesheet" href="/style.css" />
 </head>
+
 <body>
 
   <!-- Canvas de partículas/estrelas -->
@@ -29,7 +33,7 @@
     <div class="hero-content">
       <div class="badge-event">
         <span class="badge-dot"></span>
-        Evento Corporativo Exclusivo · 120 Vagas
+        Evento Corporativo Exclusivo · <span id="hero-spots-text">120 Vagas</span>
       </div>
 
       <h1 class="hero-title">
@@ -47,7 +51,7 @@
 
       <div class="hero-stats">
         <div class="stat">
-          <span class="stat-number">120</span>
+          <span class="stat-number" id="hero-stat-vagas">120</span>
           <span class="stat-label">Executivos</span>
         </div>
         <div class="stat-divider"></div>
@@ -65,12 +69,12 @@
       <!-- Pareto 80/20 visual badge -->
       <div class="pareto-badge">
         <svg width="20" height="20" viewBox="0 0 100 60" fill="none">
-          <rect x="2" y="40" width="15" height="18" fill="#7c6ff7" rx="2"/>
-          <rect x="22" y="25" width="15" height="33" fill="#5b5bd6" rx="2"/>
-          <rect x="42" y="10" width="15" height="48" fill="#4f6ef7" rx="2"/>
-          <rect x="62" y="48" width="15" height="10" fill="#334155" rx="2"/>
-          <rect x="82" y="52" width="15" height="6" fill="#1e293b" rx="2"/>
-          <path d="M2 41 L17 26 L42 11 L62 49 L97 53" stroke="#7c6ff7" stroke-width="2" fill="none"/>
+          <rect x="2" y="40" width="15" height="18" fill="#7c6ff7" rx="2" />
+          <rect x="22" y="25" width="15" height="33" fill="#5b5bd6" rx="2" />
+          <rect x="42" y="10" width="15" height="48" fill="#4f6ef7" rx="2" />
+          <rect x="62" y="48" width="15" height="10" fill="#334155" rx="2" />
+          <rect x="82" y="52" width="15" height="6" fill="#1e293b" rx="2" />
+          <path d="M2 41 L17 26 L42 11 L62 49 L97 53" stroke="#7c6ff7" stroke-width="2" fill="none" />
         </svg>
         Powered by Pareto · Princípio 80/20 aplicado à segurança
       </div>
@@ -110,75 +114,125 @@
       <div class="form-header">
         <h2>Garanta sua Vaga</h2>
         <p>Inscrição em menos de 60 segundos. Nossa IA cuida do resto.</p>
+
+        <!-- Contador de vagas -->
+        <div id="spots-counter" class="spots-counter" aria-live="polite">
+          <div class="spots-bar-wrap">
+            <div class="spots-bar-fill" id="spots-bar-fill"></div>
+          </div>
+          <div class="spots-info">
+            <span id="spots-remaining-label" class="spots-remaining">Carregando vagas...</span>
+            <span id="spots-total-label" class="spots-total"></span>
+          </div>
+        </div>
       </div>
 
       <form id="registration-form" novalidate>
 
+        <!-- Campos sempre visíveis: Nome, Email, WhatsApp -->
         <div class="form-row">
           <div class="form-group">
             <label for="name">Nome Completo <span class="required">*</span></label>
-            <input
-              type="text"
-              id="name"
-              name="name"
-              placeholder="Ex.: Carlos Mendes"
-              required
-              autocomplete="name"
-            />
+            <input type="text" id="name" name="name" placeholder="Ex.: Carlos Mendes" required autocomplete="name" />
             <span class="field-error" id="name-error"></span>
           </div>
         </div>
 
         <div class="form-row two-cols">
           <div class="form-group">
-            <label for="email">Email Corporativo <span class="required">*</span></label>
-            <input
-              type="email"
-              id="email"
-              name="email"
-              placeholder="carlos@empresa.com.br"
-              required
-              autocomplete="email"
-            />
+            <label for="email">Email Principal <span class="required">*</span></label>
+            <input type="email" id="email" name="email" placeholder="carlos@empresa.com.br" required
+              autocomplete="email" />
             <span class="field-error" id="email-error"></span>
           </div>
           <div class="form-group">
             <label for="phone">WhatsApp (com DDD) <span class="required">*</span></label>
-            <input
-              type="tel"
-              id="phone"
-              name="phone"
-              placeholder="+55 11 99999-9999"
-              required
-              autocomplete="tel"
-            />
+            <input type="tel" id="phone" name="phone" placeholder="+55 11 99999-9999" required autocomplete="tel" />
             <span class="field-error" id="phone-error"></span>
           </div>
         </div>
 
-        <div class="form-row two-cols">
+        <!-- Toggle: Tenho LinkedIn / Preencher manualmente -->
+        <div class="form-row">
           <div class="form-group">
-            <label for="role">Cargo / Função <span class="required">*</span></label>
-            <input
-              type="text"
-              id="role"
-              name="role"
-              placeholder="Ex.: CISO, CTO, Diretor de TI"
-              required
-            />
-            <span class="field-error" id="role-error"></span>
+            <label class="section-label">
+              <span class="section-label-icon">💼</span>
+              Dados Profissionais
+              <span class="section-label-hint">Como prefere informar cargo e empresa?</span>
+            </label>
+            <div class="linkedin-toggle-group">
+              <button type="button" id="linkedin-yes-btn" class="toggle-btn active" data-value="linkedin">
+                <span class="toggle-icon">🔗</span> Tenho LinkedIn
+              </button>
+              <button type="button" id="linkedin-no-btn" class="toggle-btn" data-value="manual">
+                <span class="toggle-icon">✏️</span> Preencher manualmente
+              </button>
+            </div>
           </div>
+        </div>
+
+        <!-- Modo LinkedIn: só o username; a IA busca cargo, empresa, setor, etc. -->
+        <div id="linkedin-section" class="form-row">
           <div class="form-group">
-            <label for="company">Empresa <span class="required">*</span></label>
-            <input
-              type="text"
-              id="company"
-              name="company"
-              placeholder="Ex.: TechCorp Brasil"
-              required
-              autocomplete="organization"
-            />
-            <span class="field-error" id="company-error"></span>
+            <label for="linkedin_username">Usuário do LinkedIn <span class="required">*</span></label>
+            <div class="linkedin-input-wrap">
+              <span class="linkedin-prefix">linkedin.com/in/</span>
+              <input type="text" id="linkedin_username" name="linkedin_username"
+                placeholder="seu-usuario"
+                autocomplete="off"
+                autocapitalize="none" />
+            </div>
+            <span class="field-hint">
+              Nossa IA buscará automaticamente: cargo, empresa, setor e tamanho da organização.
+            </span>
+            <span class="field-error" id="linkedin-error"></span>
+          </div>
+        </div>
+
+        <!-- Modo manual: usuário preenche todos os campos profissionais -->
+        <div id="manual-section" hidden>
+          <div class="form-row two-cols">
+            <div class="form-group">
+              <label for="role">Cargo / Função <span class="required">*</span></label>
+              <input type="text" id="role" name="role" placeholder="Ex.: CISO, CTO, Diretor de TI" />
+              <span class="field-error" id="role-error"></span>
+            </div>
+            <div class="form-group">
+              <label for="company">Empresa <span class="required">*</span></label>
+              <input type="text" id="company" name="company" placeholder="Ex.: TechCorp Brasil"
+                autocomplete="organization" />
+              <span class="field-error" id="company-error"></span>
+            </div>
+          </div>
+          <div class="form-row two-cols">
+            <div class="form-group">
+              <label for="company_size">Tamanho da Empresa</label>
+              <select id="company_size" name="company_size">
+                <option value="">Selecione...</option>
+                <option value="1-50">1 – 50 funcionários</option>
+                <option value="51-200">51 – 200 funcionários</option>
+                <option value="201-500">201 – 500 funcionários</option>
+                <option value="501-1000">501 – 1.000 funcionários</option>
+                <option value="1001-5000">1.001 – 5.000 funcionários</option>
+                <option value="5001+">5.001+ funcionários</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="sector">Setor / Indústria</label>
+              <select id="sector" name="sector">
+                <option value="">Selecione...</option>
+                <option value="Financeiro">Financeiro / Bancário</option>
+                <option value="Tecnologia">Tecnologia / SaaS</option>
+                <option value="Saúde">Saúde / MedTech</option>
+                <option value="Varejo">Varejo / E-commerce</option>
+                <option value="Indústria">Indústria / Manufatura</option>
+                <option value="Governo">Governo / Setor Público</option>
+                <option value="Energia">Energia / Utilities</option>
+                <option value="Telecomunicações">Telecomunicações</option>
+                <option value="Educação">Educação</option>
+                <option value="Outro">Outro</option>
+              </select>
+            </div>
           </div>
         </div>
 
@@ -213,7 +267,8 @@
 
         <div class="form-note">
           <span class="ai-badge">⚡ IA</span>
-          Nosso agente enriquecerá seu perfil automaticamente com dados públicos para personalizar sua experiência no evento.
+          Nosso agente enriquecerá seu perfil automaticamente com dados públicos para personalizar sua experiência no
+          evento.
         </div>
 
         <button type="submit" id="submit-btn" class="submit-button">
@@ -262,4 +317,5 @@
 
   <script src="/app.js"></script>
 </body>
+
 </html>

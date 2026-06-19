@@ -8,7 +8,7 @@ import logging
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.graph import run_funnel_for_lead, run_post_event_for_lead
@@ -19,6 +19,26 @@ from app.schemas.lead import LeadCreate, LeadRead, LeadSummary, LeadUpdate
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/leads", tags=["leads"])
+
+# Capacidade máxima do evento
+EVENT_CAPACITY = 120
+
+
+@router.get(
+    "/spots",
+    summary="Vagas disponíveis",
+    description="Retorna quantas vagas ainda restam para o evento.",
+)
+async def get_available_spots(db: Annotated[AsyncSession, Depends(get_db)]):
+    result = await db.execute(select(func.count()).select_from(Lead))
+    total = result.scalar() or 0
+    remaining = max(0, EVENT_CAPACITY - total)
+    return {
+        "capacity": EVENT_CAPACITY,
+        "registered": total,
+        "remaining": remaining,
+        "is_full": remaining == 0,
+    }
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -167,6 +187,15 @@ async def create_lead(
     background_tasks: BackgroundTasks,
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
+    # Verifica capacidade máxima do evento
+    count_result = await db.execute(select(func.count()).select_from(Lead))
+    current_count = count_result.scalar() or 0
+    if current_count >= EVENT_CAPACITY:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Inscrições encerradas. O evento atingiu a capacidade máxima de {EVENT_CAPACITY} participantes.",
+        )
+
     # Verifica duplicidade de email
     existing = await db.execute(select(Lead).where(Lead.email == payload.email))
     if existing.scalar_one_or_none():
