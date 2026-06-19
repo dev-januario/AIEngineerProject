@@ -3,9 +3,16 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 
 # Resolve o .env na raiz do projeto (AIEngineerProject/), independente
-# de onde o uvicorn é iniciado (vigil_agent/ ou raiz)
+# de onde o uvicorn é iniciado (vigil_agent/ ou raiz).
+# Testamos múltiplos caminhos possíveis para garantir que o .env seja encontrado.
 _HERE = Path(__file__).resolve().parent          # app/core/
-_ENV_FILE = _HERE.parent.parent.parent / ".env"  # → AIEngineerProject/.env
+_ENV_CANDIDATES = [
+    _HERE.parent.parent.parent / ".env",         # AIEngineerProject/.env  (normal)
+    _HERE.parent.parent.parent.parent / ".env",  # um nível acima (fallback)
+    Path.cwd() / ".env",                         # diretório atual
+    Path.cwd().parent / ".env",                  # pai do diretório atual
+]
+_ENV_FILE = next((p for p in _ENV_CANDIDATES if p.exists()), _HERE.parent.parent.parent / ".env")
 
 
 class Settings(BaseSettings):
@@ -13,6 +20,8 @@ class Settings(BaseSettings):
         env_file=str(_ENV_FILE),
         env_file_encoding="utf-8",
         case_sensitive=False,
+        env_ignore_empty=True,   # variáveis de ambiente vazias NÃO sobrescrevem o .env
+        extra="ignore",          # ignora variáveis desconhecidas
     )
 
     # App

@@ -215,9 +215,25 @@ async def send_whatsapp(
         }
 
     try:
+        import requests
+        import urllib3
         from twilio.rest import Client as TwilioClient  # type: ignore
+        from twilio.http.http_client import TwilioHttpClient
 
-        client = TwilioClient(settings.twilio_account_sid, settings.twilio_auth_token)
+        # Workaround para redes corporativas com proxy SSL (ex.: Luizalabs).
+        # A conexão é feita via HTTPS — apenas a verificação da cadeia de
+        # certificados é ignorada (necessário quando há um proxy SSL intermediário).
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        session = requests.Session()
+        session.verify = False
+        http_client = TwilioHttpClient(pool_connections=True)
+        http_client.session = session
+
+        client = TwilioClient(
+            settings.twilio_account_sid,
+            settings.twilio_auth_token,
+            http_client=http_client,
+        )
         msg = client.messages.create(
             body=message,
             from_=settings.twilio_whatsapp_from,
