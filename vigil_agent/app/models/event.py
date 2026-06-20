@@ -8,7 +8,7 @@ import enum
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, Enum, Integer, String, Text, func
+from sqlalchemy import JSON, DateTime, Enum, Integer, String, Text, func, Boolean
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -41,6 +41,17 @@ class Event(Base):
     # Configuração da régua de pós-evento
     # Minutos após encerramento para disparar a régua (3 min por padrão = teste rápido)
     post_event_delay_minutes: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
+
+    # Configuração da régua pré-evento
+    # Lista de dias antes do evento em que serão disparados lembretes.
+    # O admin pode ajustar livremente sem alterar código.
+    # Padrão: [30, 15, 7, 3, 1]
+    pre_event_reminder_days: Mapped[list[int] | None] = mapped_column(
+        JSON, nullable=True, default=lambda: [30, 15, 7, 3, 1]
+    )
+
+    # Horário de disparo diário da régua pré-evento (HH:MM, ex: "09:00")
+    pre_event_send_time: Mapped[str] = mapped_column(String(5), nullable=False, default="09:00")
 
     status: Mapped[EventStatus] = mapped_column(
         Enum(EventStatus, name="eventstatus", values_callable=lambda x: [e.value for e in x]),

@@ -96,6 +96,8 @@ class EventUpdate(BaseModel):
     description: str | None = None
     speakers: list[str] | None = None
     post_event_delay_minutes: int | None = None
+    pre_event_reminder_days: list[int] | None = None
+    pre_event_send_time: str | None = None
 
 
 class EventRead(BaseModel):
@@ -107,6 +109,8 @@ class EventRead(BaseModel):
     description: str | None
     speakers: list[str] | None
     post_event_delay_minutes: int
+    pre_event_reminder_days: list[int] | None
+    pre_event_send_time: str
     status: str
     scheduled_end_at: datetime | None
     ended_at: datetime | None
@@ -304,6 +308,30 @@ async def trigger_test(
         "message": "Disparo de teste agendado com sucesso",
         "scheduled_at": run_at.isoformat(),
         "delay_minutes": delay,
+    }
+
+
+@router.post(
+    "/scheduler/trigger-pre-event-test",
+    response_model=dict,
+    summary="🔔 Disparar Régua Pré-Evento (Teste Imediato)",
+    description=(
+        "Dispara imediatamente a régua pré-evento para todas as 3 personas (A, B, C), "
+        "sem aguardar o agendamento diário. Ideal para testes e validação dos templates."
+    ),
+)
+async def trigger_pre_event_test(
+    _: Annotated[AdminUser, Depends(get_current_admin)],
+):
+    from app.services.pre_event_scheduler import dispatch_pre_event_all
+
+    result = await dispatch_pre_event_all(force=True)
+    return {
+        "message": "Régua pré-evento disparada com sucesso",
+        "total_sent":   result["total_sent"],
+        "total_failed": result["total_failed"],
+        "by_persona":   result["by_persona"],
+        "triggered_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
     }
 
 

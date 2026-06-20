@@ -78,7 +78,11 @@ def format_date_pt(date_str: str | None, time_str: str | None = None) -> str:
     return date_str  # fallback: retorna como veio
 
 
-def build_template_vars(lead: dict, event: dict | None = None) -> dict:
+def build_template_vars(
+    lead: dict,
+    event: dict | None = None,
+    days_remaining: int | None = None,
+) -> dict:
     """Constrói o dicionário de variáveis para substituição no template."""
     first_name = (lead.get("name") or "").split()[0] if lead.get("name") else "Participante"
     speakers = event.get("speakers") or [] if event else []
@@ -89,16 +93,25 @@ def build_template_vars(lead: dict, event: dict | None = None) -> dict:
     data_ptbr = format_date_pt(raw_date)   # só a data, sem horário
     hora_ptbr = (raw_time or "A confirmar").replace(":", "h") if raw_time else "A confirmar"
 
+    # Dias restantes para o evento
+    if days_remaining is not None:
+        dias_str = f"{days_remaining} dia{'s' if days_remaining != 1 else ''}"
+    else:
+        dias_str = "em breve"
+
     return {
-        "NOME":         lead.get("name") or "Participante",
-        "PRIMEIRO_NOME": first_name,
-        "CARGO":        lead.get("role") or "Executivo",
-        "EMPRESA":      lead.get("company") or "sua empresa",
-        "DATA_EVENTO":  data_ptbr,
-        "HORA_EVENTO":  hora_ptbr,
-        "LOCAL_EVENTO": event.get("location") or "A confirmar" if event else "A confirmar",
-        "NOME_EVENTO":  event.get("name") or "Vigil Summit" if event else "Vigil Summit",
-        "PALESTRANTES": f"\n- {speakers_str}" if speakers else "A confirmar",
+        "NOME":              lead.get("name") or "Participante",
+        "PRIMEIRO_NOME":     first_name,
+        "CARGO":             lead.get("role") or "Executivo",
+        "EMPRESA":           lead.get("company") or "sua empresa",
+        "DATA_EVENTO":       data_ptbr,
+        "HORA_EVENTO":       hora_ptbr,
+        "LOCAL_EVENTO":      event.get("location") or "A confirmar" if event else "A confirmar",
+        "NOME_EVENTO":       event.get("name") or "Vigil Summit" if event else "Vigil Summit",
+        "PALESTRANTES":      f"\n- {speakers_str}" if speakers else "A confirmar",
+        "DIAS_RESTANTES":    dias_str,
+        "NOME_ACOMPANHANTE": lead.get("companion_email") or "seu acompanhante",
+        "LINK_INSCRICAO":    "https://vigil.ai/inscricao",  # pode ser configurado futuramente
     }
 
 

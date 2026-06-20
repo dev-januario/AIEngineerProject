@@ -32,11 +32,12 @@ class LeadStatus(str, enum.Enum):
 
 
 class FunnelPhase(str, enum.Enum):
-    CAPTURE = "capture"
-    ENRICHMENT = "enrichment"
-    PRE_EVENT = "pre_event"
-    POST_EVENT = "post_event"
-    CLOSED = "closed"
+    CAPTURE           = "capture"
+    ENRICHMENT        = "enrichment"
+    PRE_EVENT         = "pre_event"
+    COMPANION_PENDING = "companion_pending"  # acompanhante cujo convite foi enviado, mas ainda não se inscreveu
+    POST_EVENT        = "post_event"
+    CLOSED            = "closed"
 
 
 class Lead(Base):
@@ -97,6 +98,13 @@ class Lead(Base):
     companion_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Tipo de relação com o acompanhante: colleague | friend | spouse | child | other
     companion_relationship: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
+    # ── Companion Flag ────────────────────────────────────────────────────────
+    # True quando este lead é um acompanhante (criado a partir do companion_email de outro lead)
+    # Esses leads entram na régua PRE_EVENT_COMPANION_PENDING até completarem inscrição própria
+    is_companion: Mapped[bool] = mapped_column(default=False, nullable=False)
+    # ID do lead principal que gerou este acompanhante (FK lógica — sem constraint para simplicidade)
+    companion_of_lead_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # ── LGPD / Consent ───────────────────────────────────────────────────────
     lgpd_consent: Mapped[bool] = mapped_column(default=False, nullable=False)

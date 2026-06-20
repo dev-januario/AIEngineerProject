@@ -270,6 +270,48 @@ async def _send_companion_invite(lead: Lead) -> None:
         f"(lead_id={lead.id}, status={result.get('status')})"
     )
 
+async def _create_companion_lead(lead: Lead) -> None:
+    """
+    Cria automaticamente um lead-acompanhante quando o participante informa `companion_email`.
+    O acompanhante entra com `is_companion=True` e `funnel_phase=COMPANION_PENDING`,
+    ficando na régua de lembretes para completar a inscrição própria.
+    """
+    if not lead.companion_email or not lead.with_companion:
+        return
+
+    from app.db.session import AsyncSessionLocal
+
+    async with AsyncSessionLocal() as db:
+        # Verifica se já existe lead com esse email
+        existing = await db.execute(
+            select(Lead).where(Lead.email == lead.companion_email.lower())
+        )
+        if existing.scalar_one_or_none():
+            logger.info(
+                f"[CompanionLead] Acompanhante já possui cadastro próprio: {lead.companion_email}"
+            )
+            return
+
+        companion = Lead(
+            name=lead.companion_email.split("@")[0].replace(".", " ").title(),  # placeholder
+            email=lead.companion_email.lower(),
+            phone=None,
+            is_companion=True,
+            companion_of_lead_id=lead.id,
+            with_companion=False,
+            status=LeadStatus.NEW,
+            funnel_phase=FunnelPhase.COMPANION_PENDING,
+            communication_log=[],
+            lgpd_consent=False,
+        )
+        db.add(companion)
+        await db.commit()
+        await db.refresh(companion)
+
+    logger.info(
+        f"[CompanionLead] Lead-acompanhante criado: id={companion.id} | "
+        f"email={companion.email} | referenciado por lead_id={lead.id}"
+    )
 
 
 
@@ -326,11 +368,12 @@ async def create_lead(
     await db.flush()  # Garante que o ID é gerado
     await db.refresh(lead)
 
-    # Dispara confirmação imediata + funil de IA em background
+    # Dispara confirmação imediata + funil de IA + acompanhante em background
     background_tasks.add_task(_send_confirmation, lead)
     background_tasks.add_task(_trigger_funnel, lead)
     if lead.with_companion and lead.companion_email:
         background_tasks.add_task(_send_companion_invite, lead)
+        background_tasks.add_task(_create_companion_lead, lead)  # cria lead-acompanhante
 
     logger.info(f"[Route] Lead criado: id={lead.id} | email={lead.email}")
     return lead

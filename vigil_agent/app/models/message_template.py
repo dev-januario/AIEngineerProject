@@ -4,15 +4,18 @@ MessageTemplate Model
 Templates de mensagem editáveis pelo admin com suporte a variáveis dinâmicas.
 
 Variáveis disponíveis nos templates:
-  {{NOME}}          → nome do participante
-  {{PRIMEIRO_NOME}} → primeiro nome
-  {{CARGO}}         → cargo/função
-  {{EMPRESA}}       → empresa
-  {{DATA_EVENTO}}   → data do evento (ex.: 15/07/2026)
-  {{HORA_EVENTO}}   → horário do evento (ex.: 09:00)
-  {{LOCAL_EVENTO}}  → local do evento
-  {{NOME_EVENTO}}   → nome do evento
-  {{PALESTRANTES}}  → lista de palestrantes separada por vírgula
+  {{NOME}}              → nome do participante
+  {{PRIMEIRO_NOME}}     → primeiro nome
+  {{CARGO}}             → cargo/função
+  {{EMPRESA}}           → empresa
+  {{DATA_EVENTO}}       → data do evento (ex.: 15/07/2026)
+  {{HORA_EVENTO}}       → horário do evento (ex.: 09:00)
+  {{LOCAL_EVENTO}}      → local do evento
+  {{NOME_EVENTO}}       → nome do evento
+  {{PALESTRANTES}}      → lista de palestrantes separada por vírgula
+  {{DIAS_RESTANTES}}    → quantos dias faltam para o evento
+  {{NOME_ACOMPANHANTE}} → nome/email do acompanhante (quando with_companion=True)
+  {{LINK_INSCRICAO}}    → link para o acompanhante completar inscrição
 """
 
 import enum
@@ -25,18 +28,29 @@ from app.db.base import Base
 
 
 class TemplatePhase(str, enum.Enum):
-    PRE_EVENT = "pre_event"
+    # ── Inscrição ──────────────────────────────────────────────────────────────
     CONFIRMATION = "confirmation"
-    POST_EVENT = "post_event"
+
+    # ── Pré-Evento ─────────────────────────────────────────────────────────────
+    PRE_EVENT = "pre_event"                                # Generic / legado
+
+    PRE_EVENT_PARTICIPANT     = "pre_event_participant"        # Persona A: participante simples
+    PRE_EVENT_WITH_COMPANION  = "pre_event_with_companion"     # Persona B: participante com acompanhante
+    PRE_EVENT_COMPANION_PENDING = "pre_event_companion_pending" # Persona C: acompanhante não inscrito
+
+    # ── Pós-Evento ─────────────────────────────────────────────────────────────
+    POST_EVENT          = "post_event"
     POST_EVENT_ATTENDED = "post_event_attended"   # lead esteve presente → agradecimento
     POST_EVENT_NO_SHOW  = "post_event_no_show"    # lead não foi → mensagem de conforto
+
+    # ── Genérico ───────────────────────────────────────────────────────────────
     REPLY = "reply"
 
 
 class TemplateChannel(str, enum.Enum):
-    EMAIL = "EMAIL"
+    EMAIL    = "EMAIL"
     WHATSAPP = "WHATSAPP"
-    BOTH = "BOTH"
+    BOTH     = "BOTH"
 
 
 class MessageTemplate(Base):
@@ -64,6 +78,11 @@ class MessageTemplate(Base):
     # Ordem de disparo dentro da fase (1 = primeiro, 2 = segundo, etc.)
     sequence_order: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 
+    # Quantidade de dias antes do evento para disparar este template.
+    # Null = sem restrição de data (usado em templates de confirmação, pós-evento, etc.)
+    # Exemplos: 30, 15, 7, 3, 1
+    days_before_event: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(
@@ -74,4 +93,4 @@ class MessageTemplate(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<MessageTemplate id={self.id} name={self.name!r} phase={self.phase}>"
+        return f"<MessageTemplate id={self.id} name={self.name!r} phase={self.phase} days_before={self.days_before_event}>"

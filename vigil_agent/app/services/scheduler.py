@@ -33,6 +33,42 @@ def start_scheduler():
     # Job: polling de emails inbound (respostas de leads)
     _register_imap_polling()
 
+    # Job: régua pré-evento diária
+    _register_pre_event_daily_job()
+
+
+def _register_pre_event_daily_job():
+    """Registra o job diário de lembretes pré-evento."""
+    from app.services.pre_event_scheduler import register_pre_event_job
+
+    # Tenta buscar o horário configurado no evento ativo
+    # Usa "09:00" como fallback caso o banco ainda não esteja disponível no startup
+    try:
+        import asyncio
+        from app.db.session import AsyncSessionLocal
+        from app.models.event import Event, EventStatus
+        from sqlalchemy import select
+
+        async def _get_send_time() -> str:
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(
+                    select(Event).where(Event.status == EventStatus.ACTIVE).order_by(Event.id.desc())
+                )
+                event = result.scalar_one_or_none()
+                return event.pre_event_send_time if event else "09:00"
+
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # No contexto asyncio (lifespan), agenda com horário padrão e deixa o job atualizar depois
+            send_time = "09:00"
+        else:
+            send_time = loop.run_until_complete(_get_send_time())
+    except Exception as e:
+        logger.warning(f"[Scheduler] Não foi possível buscar horário do evento: {e} — usando 09:00")
+        send_time = "09:00"
+
+    register_pre_event_job(send_time=send_time)
+
 
 def _register_imap_polling():
     """Registra (ou re-registra) o job de IMAP polling no scheduler."""
