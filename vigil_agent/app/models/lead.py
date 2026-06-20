@@ -29,6 +29,8 @@ class LeadStatus(str, enum.Enum):
     FOLLOWED_UP = "followed_up"
     MEETING_BOOKED = "meeting_booked"
     OUT_OF_ICP = "out_of_icp"
+    # Aguardando aprovação manual do admin (cargo intermediario: gerente, coord., especialista, etc.)
+    PENDING_REVIEW = "pending_review"
 
 
 class FunnelPhase(str, enum.Enum):
@@ -96,7 +98,8 @@ class Lead(Base):
     with_companion: Mapped[bool] = mapped_column(default=False, nullable=False)
     # Email do acompanhante — obrigatório quando with_companion=True; recebe notificação e link para preencher o formulário
     companion_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    # Tipo de relação com o acompanhante: colleague | friend | spouse | child | other
+    # Tipo de vínculo com o acompanhante — somente perfis profissionais são permitidos:
+    # partner | director | manager | coordinator | team_member | colleague | business_partner | guest_executive
     companion_relationship: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     # ── Companion Flag ────────────────────────────────────────────────────────

@@ -1,9 +1,22 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, EmailStr, Field, HttpUrl, model_validator
+from pydantic import BaseModel, EmailStr, Field, HttpUrl, field_validator, model_validator
 
 from app.models.lead import FunnelPhase, LeadStatus
+
+
+# Vínculos profissionais permitidos para acompanhantes
+COMPANION_PROFESSIONAL_RELATIONSHIPS = {
+    "partner",           # Sócio
+    "director",          # Diretor
+    "manager",           # Gerente
+    "coordinator",       # Coordenador
+    "team_member",       # Membro da equipe
+    "colleague",         # Colega / colaborador
+    "business_partner",  # Parceiro de negócios
+    "guest_executive",   # Executivo convidado
+}
 
 
 # ── Base ──────────────────────────────────────────────────────────────────────
@@ -22,7 +35,11 @@ class LeadBase(BaseModel):
     companion_email: str | None = Field(None, description="Email do acompanhante (obrigatório quando with_companion=True)")
     companion_relationship: str | None = Field(
         None,
-        description="Tipo de relação com o acompanhante: colleague | friend | spouse | child | other",
+        description=(
+            "Vínculo profissional com o acompanhante. Somente perfis corporativos são aceitos. "
+            "Valores permitidos: partner, director, manager, coordinator, "
+            "team_member, colleague, business_partner, guest_executive"
+        ),
     )
     lgpd_consent: bool = Field(False, description="Consentimento LGPD obrigatório")
 
@@ -36,6 +53,19 @@ class LeadBase(BaseModel):
     def check_companion_email(self) -> "LeadBase":
         if self.with_companion and not self.companion_email:
             raise ValueError("O email do acompanhante é obrigatório quando 'with_companion' é verdadeiro.")
+        return self
+
+    @model_validator(mode="after")
+    def check_companion_relationship(self) -> "LeadBase":
+        """Rejeita vínculos pessoais (amigo, cônjuge, familiar). Apenas perfis profissionais são aceitos."""
+        if self.with_companion and self.companion_relationship:
+            if self.companion_relationship not in COMPANION_PROFESSIONAL_RELATIONSHIPS:
+                allowed = ", ".join(sorted(COMPANION_PROFESSIONAL_RELATIONSHIPS))
+                raise ValueError(
+                    f"Vínculo '{self.companion_relationship}' não é permitido. "
+                    f"O Vigil Summit aceita apenas acompanhantes com vínculo profissional. "
+                    f"Valores válidos: {allowed}"
+                )
         return self
 
 

@@ -34,19 +34,35 @@ Você acabou de receber um novo lead para o Vigil Summit.
 **Lead:**
 {lead_context}
 
-**Tarefa:**
-1. Use a ferramenta `enrich_lead` para buscar dados públicos deste contato
-2. Analise o perfil enriquecido e calcule o score de qualificação ICP
-3. Decida se vale avançar para contato (score >= 0.60) ou marcar como fora do perfil
-4. Gere os hooks de personalização para mensagens futuras
+**Classifica\u00e7\u00e3o Determin\u00edstica J\u00e1 Aplicada:** `{eligibility_result}`
+(baseada apenas no cargo declarado — você pode reclassificar se os dados enriquecidos indicarem outro perfil)
 
-**Critérios ICP Vigil Summit:**
-- Cargo: CISO, CTO, Diretor de TI, Head de Segurança, Risk Manager (peso 40%)
-- Empresa: 200+ funcionários (peso 35%)
-- Setor: Financeiro, Saúde, Governo, Energia, Telecom (peso 20%)
+**Tarefa:**
+1. Use a ferramenta `enrich_lead` para buscar dados p\u00fablicos deste contato
+2. Analise o perfil enriquecido e valide (ou reclassifique) a elegibilidade abaixo
+3. Calcule o score de qualifica\u00e7\u00e3o ICP
+4. Gere os hooks de personaliza\u00e7\u00e3o para mensagens futuras
+
+**Crit\u00e9rios de Elegibilidade do Vigil Summit:**
+
+| Classifica\u00e7\u00e3o | Cargo / Perfil |
+|---|---|
+| ✅ Aprovado | CISO, CTO, CIO, Diretor, Head, VP, Chief, Risk Manager |
+| ⏳ Revis\u00e3o Manual | Gerente, Coordenador, Especialista, Consultor, Analista S\u00eanior |
+| ❌ N\u00e3o Eleg\u00edvel | Sem rela\u00e7\u00e3o com TI/Seguran\u00e7a/Risco, estudantes, cargos administrativos |
+
+**Crit\u00e9rios ICP Vigil Summit (score):**
+- Cargo: CISO, CTO, Diretor de TI, Head de Seguran\u00e7a, Risk Manager (peso 40%)
+- Empresa: 200+ funcion\u00e1rios (peso 35%)
+- Setor: Financeiro, Sa\u00fade, Governo, Energia, Telecom (peso 20%)
 - LinkedIn ativo: sinal de engajamento (peso 5%)
 
-Retorne um JSON com: score, tier (A/B/C/D), fits_icp (bool), reasoning e personalization_hooks.
+**Importante:** Se os dados enriquecidos mostrarem que o cargo real do lead difere do declarado
+(ex.: se declarou "Analista" mas no LinkedIn \u00e9 "Head de Seguran\u00e7a"), indique claramente a
+reclassifica\u00e7\u00e3o recomendada no campo `eligibility_override`.
+
+Retorne um JSON com: score, tier (A/B/C/D), fits_icp (bool), eligibility_override (ou null),
+reasoning e personalization_hooks.
 """
 
 # ── Fase 3: Engajamento Pré-Evento ────────────────────────────────────────────

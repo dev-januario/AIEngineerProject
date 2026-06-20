@@ -39,6 +39,83 @@ TARGET_ROLES = {
     "chief technology officer": 0.95,
 }
 
+# ── Regras de Elegibilidade (determinísticas, sem IA) ─────────────────────────
+
+# Cargos que aprovam automaticamente — liderança executiva de TI/Segurança/Risco
+# Siglas curtas são verificadas como PALAVRAS COMPLETAS (word boundary) para evitar
+# falsos positivos: ex. 'coo' dentro de 'coordenador', 'cio' dentro de 'associação'.
+_AUTO_APPROVED_ACRONYMS = {"ciso", "cto", "cio", "coo"}
+
+_AUTO_APPROVED_KEYWORDS = [
+    "chief", "vp ", "vice-president", "vice president",
+    "diretor", "director",
+    "head de", "head of",
+    "risk manager", "gestor de risco", "gestora de risco",
+]
+
+# Cargos que entram em revisão manual — perfil intermediário, pode ou não ser elegível
+_PENDING_REVIEW_KEYWORDS = [
+    "gerente", "manager",
+    "coordenador", "coordinator",
+    "especialista", "specialist",
+    "consultor", "consultant",
+    "analista sênior", "senior analyst",
+    "analista senior",
+    "engenheiro sênior", "senior engineer",
+    "arquiteto", "architect",
+]
+
+# Palavras-chave que indicam área relevante (TI, Segurança, Risco, Compliance)
+_TECH_SECURITY_AREA_KEYWORDS = [
+    "segurança", "security", "tecnologia", "technology", "ti ", "it ",
+    "cibersegurança", "cybersecurity", "cyber",
+    "risco", "risk", "compliance", "informação", "information",
+    "dados", "data", "infraestrutura", "infrastructure",
+    "cloud", "devops", "devSecOps", "soc", "siem",
+]
+
+
+def classify_lead_eligibility(role: str | None) -> str:
+    """
+    Classifica o lead de forma determinística com base no cargo declarado.
+
+    Retorna:
+        "approved"       → cargo de liderança executiva, entra direto no funil
+        "pending_review" → cargo intermediário com área relevante, aguarda validação do admin
+        "not_eligible"   → cargo sem relação com TI/Segurança/Risco ou perfil incompatível
+
+    Essa função é síncrona e roda antes do enriquecimento assíncrono por IA.
+    """
+    if not role or not role.strip():
+        # Sem cargo declarado → vai para revisão manual (benefício da dúvida)
+        return "pending_review"
+
+    role_lower = role.strip().lower()
+
+    # 1. Aprovação automática: verifica siglas como palavras completas (evita substring bugs)
+    role_words = set(role_lower.replace("-", " ").replace("/", " ").replace("(", " ").replace(")", " ").split())
+    if role_words & _AUTO_APPROVED_ACRONYMS:
+        return "approved"
+
+    # 1b. Aprovação automática: cargo executivo por keyword substring
+    for keyword in _AUTO_APPROVED_KEYWORDS:
+        if keyword in role_lower:
+            return "approved"
+
+    # 2. Revisão manual: cargo intermediário + área relevante
+    is_intermediate = any(kw in role_lower for kw in _PENDING_REVIEW_KEYWORDS)
+    is_relevant_area = any(kw in role_lower for kw in _TECH_SECURITY_AREA_KEYWORDS)
+
+    if is_intermediate and is_relevant_area:
+        return "pending_review"
+
+    # 3. Cargo relevante mas não executivo e não claramente intermediário → revisão
+    if is_relevant_area:
+        return "pending_review"
+
+    # 4. Sem relação com a área → não elegível
+    return "not_eligible"
+
 # Setores com alta propensão à segurança digital
 HIGH_VALUE_SECTORS = {
     "financeiro": 1.0,

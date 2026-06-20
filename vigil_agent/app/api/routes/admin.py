@@ -20,7 +20,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -155,12 +155,19 @@ class LeadAdminRead(BaseModel):
     company: str | None
     role: str | None
     with_companion: bool
+    is_companion: bool
     status: str
     funnel_phase: str
     qualification_score: float | None
     attended: bool | None
     created_at: datetime
     model_config = {"from_attributes": True}
+
+
+class QualifyRequest(BaseModel):
+    """Payload para aprovação ou rejeição manual de inscrição em `pending_review`."""
+    action: str  # "approve" | "reject"
+    notes: str | None = None  # Observação interna (opcional)
 
 
 # ── Endpoints: Auth ───────────────────────────────────────────────────────────
@@ -399,9 +406,78 @@ async def delete_template(
 async def list_leads_admin(
     db: Annotated[AsyncSession, Depends(get_db)],
     _: Annotated[AdminUser, Depends(get_current_admin)],
+    pending_only: bool = False,
 ):
-    result = await db.execute(select(Lead).order_by(Lead.created_at.desc()))
+    from app.models.lead import LeadStatus as LS
+    query = select(Lead).order_by(Lead.created_at.desc())
+    if pending_only:
+        query = query.where(Lead.status == LS.PENDING_REVIEW)
+    result = await db.execute(query)
     return result.scalars().all()
+
+
+@router.post(
+    "/leads/{lead_id}/qualify",
+    response_model=dict,
+    summary="✅ Aprovar ou Rejeitar inscrição em Revisão Manual",
+    description=(
+        "Permite ao admin aprovar ou rejeitar um lead com status `pending_review`. "
+        "Approve: dispara o funil normalmente. Reject: envia email de cortesia e fecha o ciclo."
+    ),
+)
+async def qualify_lead(
+    lead_id: int,
+    payload: QualifyRequest,
+    background_tasks: BackgroundTasks,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[AdminUser, Depends(get_current_admin)],
+):
+    from app.models.lead import FunnelPhase, LeadStatus
+
+    result = await db.execute(select(Lead).where(Lead.id == lead_id))
+    lead = result.scalar_one_or_none()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead não encontrado")
+
+    if lead.status != LeadStatus.PENDING_REVIEW:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Lead não está em revisão. Status atual: {lead.status.value}"
+        )
+
+    if payload.action not in ("approve", "reject"):
+        raise HTTPException(status_code=422, detail="action deve ser 'approve' ou 'reject'")
+
+    if payload.action == "approve":
+        lead.status = LeadStatus.NEW
+        lead.funnel_phase = FunnelPhase.CAPTURE
+        if payload.notes:
+            lead.event_notes = (lead.event_notes or "") + f"\n[Admin aprovou: {payload.notes}]"
+        await db.flush()
+
+        # Importa helpers de leads para não duplicar lógica
+        from app.api.routes.leads import _send_confirmation, _trigger_funnel, _send_companion_invite, _create_companion_lead
+        background_tasks.add_task(_send_confirmation, lead)
+        background_tasks.add_task(_trigger_funnel, lead)
+        if lead.with_companion and lead.companion_email:
+            background_tasks.add_task(_send_companion_invite, lead)
+            background_tasks.add_task(_create_companion_lead, lead)
+
+        logger.info(f"[Admin] Lead id={lead_id} APROVADO manualmente")
+        return {"message": "Inscrição aprovada. Funil iniciado.", "lead_id": lead_id, "action": "approve"}
+
+    else:  # reject
+        lead.status = LeadStatus.OUT_OF_ICP
+        lead.funnel_phase = FunnelPhase.CLOSED
+        if payload.notes:
+            lead.event_notes = (lead.event_notes or "") + f"\n[Admin rejeitou: {payload.notes}]"
+        await db.flush()
+
+        from app.api.routes.leads import _send_not_eligible_email
+        background_tasks.add_task(_send_not_eligible_email, lead)
+
+        logger.info(f"[Admin] Lead id={lead_id} REJEITADO manualmente")
+        return {"message": "Inscrição rejeitada. Email de cortesia enviado.", "lead_id": lead_id, "action": "reject"}
 
 
 # ── Endpoints: Scheduler Status ───────────────────────────────────────────────

@@ -18,6 +18,7 @@ from app.core.security import require_api_key
 from app.db.session import get_db
 from app.models.lead import FunnelPhase, Lead, LeadStatus
 from app.schemas.lead import LeadCreate, LeadRead, LeadSummary, LeadUpdate
+from app.services.enrichment import classify_lead_eligibility
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/leads", tags=["leads"])
@@ -231,14 +232,18 @@ async def _send_companion_invite(lead: Lead) -> None:
     from app.services.notification import send_email
     from app.core.config import settings
 
+    # Apenas vínculos profissionais são aceitos — mapeamento de valores internos para português
     relationship_labels = {
-        "colleague": "colega de trabalho",
-        "friend":    "amigo(a)",
-        "spouse":    "cônjuge/parceiro(a)",
-        "child":     "filho(a)",
-        "other":     "familiar/conhecido(a)",
+        "partner":          "sócio(a)",
+        "director":         "diretor(a)",
+        "manager":          "gerente",
+        "coordinator":      "coordenador(a)",
+        "team_member":      "membro da equipe",
+        "colleague":        "colega de trabalho",
+        "business_partner": "parceiro(a) de negócios",
+        "guest_executive":  "executivo(a) convidado(a)",
     }
-    rel_label = relationship_labels.get(lead.companion_relationship or "", "acompanhante")
+    rel_label = relationship_labels.get(lead.companion_relationship or "", "acompanhante profissional")
 
     # URL base do formulário — usa BASE_URL das configs ou fallback para a raiz
     base_url = getattr(settings, "base_url", "").rstrip("/") or ""
@@ -314,6 +319,45 @@ async def _create_companion_lead(lead: Lead) -> None:
     )
 
 
+async def _send_not_eligible_email(lead: Lead) -> None:
+    """
+    Envia email de cortesia para leads classificados como 'not_eligible'.
+    Tom respeitoso — informa que o evento é exclusivo sem ser grosseiro.
+    O lead NÃO é apagado; permanece como out_of_icp para futuros contatos.
+    """
+    from app.services.notification import send_email
+
+    first_name = lead.name.split()[0] if lead.name else "prezado(a)"
+    subject = "Recebemos sua inscrição para o Vigil Summit 2026"
+    body = (
+        f"Olá, {first_name}!\n\n"
+        f"Agradecemos seu interesse no Vigil Summit 2026 — Segurança para a Era da IA.\n\n"
+        f"O Vigil Summit é um evento exclusivo para líderes de Tecnologia, Segurança da "
+        f"Informação e Gestão de Riscos de médias e grandes empresas. Ao analisarmos sua "
+        f"inscrição, identificamos que o perfil cadastrado (cargo: {lead.role or 'não informado'}) "
+        f"não se enquadra no público-alvo desta edição.\n\n"
+        f"Isso não impede que você acompanhe nossas iniciativas futuras! Manteremos seu "
+        f"contato em nossa base e entraremos em contato caso surjam oportunidades "
+        f"alinhadas ao seu perfil.\n\n"
+        f"Caso acredite que houve algum engano ou deseje complementar suas informações, "
+        f"responda este email.\n\n"
+        f"Obrigado pela compreensão e até uma próxima oportunidade!\n"
+        f"— Equipe Vigil.AI"
+    )
+
+    result = await send_email(
+        email=lead.email,
+        subject=subject,
+        body=body,
+        lead_id=lead.id,
+        template_name="not_eligible_courtesy",
+    )
+    logger.info(
+        f"[NotEligible] Email de cortesia enviado para lead_id={lead.id} | "
+        f"status={result.get('status')}"
+    )
+
+
 
 @router.post(
     "/",
@@ -368,14 +412,38 @@ async def create_lead(
     await db.flush()  # Garante que o ID é gerado
     await db.refresh(lead)
 
-    # Dispara confirmação imediata + funil de IA + acompanhante em background
-    background_tasks.add_task(_send_confirmation, lead)
-    background_tasks.add_task(_trigger_funnel, lead)
-    if lead.with_companion and lead.companion_email:
-        background_tasks.add_task(_send_companion_invite, lead)
-        background_tasks.add_task(_create_companion_lead, lead)  # cria lead-acompanhante
+    # ── Qualificação Determinística ──────────────────────────────────────────
+    # Classifica imediatamente, antes de qualquer envio ou enriquecimento por IA
+    eligibility = classify_lead_eligibility(payload.role)
+    logger.info(f"[Route] Qualificação: lead_id={lead.id} | role='{payload.role}' | result={eligibility}")
 
-    logger.info(f"[Route] Lead criado: id={lead.id} | email={lead.email}")
+    if eligibility == "approved":
+        # Perfil executivo claro → funil roda normalmente
+        lead.status = LeadStatus.NEW
+        background_tasks.add_task(_send_confirmation, lead)
+        background_tasks.add_task(_trigger_funnel, lead)
+        if lead.with_companion and lead.companion_email:
+            background_tasks.add_task(_send_companion_invite, lead)
+            background_tasks.add_task(_create_companion_lead, lead)
+
+    elif eligibility == "pending_review":
+        # Perfil intermediário → aguarda aprovação manual do admin
+        lead.status = LeadStatus.PENDING_REVIEW
+        lead.funnel_phase = FunnelPhase.CAPTURE
+        # Envia confirmação de recebimento (sem confirmar participação)
+        background_tasks.add_task(_send_confirmation, lead)
+        # NÃO dispara funil — admin aprova primeiro
+
+    else:  # not_eligible
+        # Sem perfil adequado → email de cortesia, sem acesso ao evento
+        lead.status = LeadStatus.OUT_OF_ICP
+        lead.funnel_phase = FunnelPhase.CLOSED
+        background_tasks.add_task(_send_not_eligible_email, lead)
+
+    await db.commit()
+    await db.refresh(lead)
+
+    logger.info(f"[Route] Lead criado: id={lead.id} | email={lead.email} | eligibility={eligibility}")
     return lead
 
 

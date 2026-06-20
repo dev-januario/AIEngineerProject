@@ -615,6 +615,24 @@ input.field-invalid {
   margin-top: 1px;
 }
 
+/* Event Exclusivity Notice */
+.event-exclusivity-notice {
+  margin-bottom: 1.25rem;
+  padding: 0.9rem 1.1rem;
+  background: rgba(245, 158, 11, 0.06);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: var(--radius-md);
+  font-size: 0.81rem;
+  color: #d4a017;
+  line-height: 1.55;
+}
+
+.event-exclusivity-notice strong {
+  color: #fbbf24;
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
 /* Submit Button */
 .submit-button {
   width: 100%;

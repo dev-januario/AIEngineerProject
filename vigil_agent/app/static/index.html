@@ -269,15 +269,19 @@
               <span class="field-error" id="companion-email-error"></span>
             </div>
             <div class="form-group">
-              <label for="companion_relationship">Vínculo <span class="required">*</span></label>
+              <label for="companion_relationship">Vínculo Profissional <span class="required">*</span></label>
               <select id="companion_relationship" name="companion_relationship">
                 <option value="">Selecione...</option>
-                <option value="colleague">Colega de trabalho</option>
-                <option value="friend">Amigo(a)</option>
-                <option value="spouse">Cônjuge / Parceiro(a)</option>
-                <option value="child">Filho(a)</option>
-                <option value="other">Outro familiar / Conhecido</option>
+                <option value="partner">Sócio(a)</option>
+                <option value="director">Diretor(a)</option>
+                <option value="manager">Gerente</option>
+                <option value="coordinator">Coordenador(a)</option>
+                <option value="team_member">Membro da equipe</option>
+                <option value="colleague">Colaborador(a) da mesma empresa</option>
+                <option value="business_partner">Parceiro(a) de negócios</option>
+                <option value="guest_executive">Executivo(a) convidado(a)</option>
               </select>
+              <span class="field-hint">Somente acompanhantes com vínculo profissional são aceitos.</span>
               <span class="field-error" id="companion-relationship-error"></span>
             </div>
           </div>
@@ -303,8 +307,16 @@
           evento.
         </div>
 
+        <!-- Disclaimer exclusividade do evento -->
+        <div class="event-exclusivity-notice">
+          <p>
+            <strong>O Vigil Summit é um evento exclusivo para líderes de Tecnologia, Segurança da Informação e Gestão de Riscos.</strong>
+            Todas as inscrições serão avaliadas antes da confirmação da participação.
+          </p>
+        </div>
+
         <button type="submit" id="submit-btn" class="submit-button">
-          <span class="submit-text">Garantir Minha Vaga</span>
+          <span class="submit-text">Enviar Inscrição</span>
           <span class="submit-arrow">→</span>
           <div class="submit-loader" hidden>
             <div class="loader-ring"></div>
