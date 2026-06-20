@@ -5,9 +5,11 @@ Endpoints para o ciclo de vida completo de leads do Vigil Summit.
 """
 
 import logging
+from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from pydantic import BaseModel, EmailStr
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,6 +40,51 @@ async def get_available_spots(db: Annotated[AsyncSession, Depends(get_db)]):
         "registered": total,
         "remaining": remaining,
         "is_full": remaining == 0,
+    }
+
+
+# ── Check-in via QR Code ──────────────────────────────────────────────────────
+
+class CheckinRequest(BaseModel):
+    email: EmailStr
+
+
+@router.post(
+    "/checkin",
+    response_model=dict,
+    summary="Confirmar presença via QR Code",
+    description="Endpoint público chamado pela página de check-in. Marca o lead como presente.",
+)
+async def checkin_lead(
+    payload: CheckinRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    result = await db.execute(select(Lead).where(Lead.email == payload.email.lower()))
+    lead = result.scalar_one_or_none()
+
+    if not lead:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Email não encontrado. Verifique se usou o mesmo email do cadastro.",
+        )
+
+    if lead.attended is True:
+        return {
+            "already_checked_in": True,
+            "name": lead.name,
+            "message": f"Olá, {lead.name.split()[0]}! Sua presença já foi confirmada. Aproveite o evento! 🎉",
+        }
+
+    lead.attended = True
+    lead.status = LeadStatus.ATTENDED
+    lead.event_notes = (lead.event_notes or "") + f"\n[Check-in QR Code: {datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M')} BRT]"
+    await db.commit()
+
+    logger.info(f"[Checkin] Presença confirmada — lead_id={lead.id} | email={lead.email}")
+    return {
+        "already_checked_in": False,
+        "name": lead.name,
+        "message": f"Presença confirmada! Bem-vindo(a), {lead.name.split()[0]}! 🎉 Seu brinde está garantido.",
     }
 
 
@@ -173,6 +220,57 @@ async def _send_confirmation(lead: Lead) -> None:
     logger.info(f"[Confirmation] Confirmação enviada para lead_id={lead.id}")
 
 
+async def _send_companion_invite(lead: Lead) -> None:
+    """
+    Envia email de convite ao acompanhante quando o lead registra with_companion=True.
+    O acompanhante recebe um link direto para o formulário de inscrição.
+    """
+    if not lead.companion_email:
+        return
+
+    from app.services.notification import send_email
+    from app.core.config import settings
+
+    relationship_labels = {
+        "colleague": "colega de trabalho",
+        "friend":    "amigo(a)",
+        "spouse":    "cônjuge/parceiro(a)",
+        "child":     "filho(a)",
+        "other":     "familiar/conhecido(a)",
+    }
+    rel_label = relationship_labels.get(lead.companion_relationship or "", "acompanhante")
+
+    # URL base do formulário — usa BASE_URL das configs ou fallback para a raiz
+    base_url = getattr(settings, "base_url", "").rstrip("/") or ""
+    form_url = f"{base_url}/#inscricao" if base_url else "/#inscricao"
+
+    subject = f"Você foi convidado(a) para o Vigil Summit 2026"
+    body = (
+        f"Olá!\n\n"
+        f"{lead.name} ({rel_label}) realizou sua inscrição no Vigil Summit 2026 "
+        f"e indicou que você irá acompanhá-lo(a) no evento.\n\n"
+        f"Para garantir sua vaga, é necessário que você também preencha o "
+        f"formulário de inscrição. As vagas são limitadas e sua presença só é "
+        f"confirmada após o preenchimento.\n\n"
+        f"Acesse o link abaixo e inscreva-se agora:\n"
+        f"{form_url}\n\n"
+        f"— Equipe Vigil.AI"
+    )
+
+    result = await send_email(
+        email=lead.companion_email,
+        subject=subject,
+        body=body,
+        lead_id=lead.id,
+        template_name="companion_invite",
+    )
+
+    logger.info(
+        f"[CompanionInvite] Convite enviado para {lead.companion_email} "
+        f"(lead_id={lead.id}, status={result.get('status')})"
+    )
+
+
 
 
 @router.post(
@@ -216,6 +314,8 @@ async def create_lead(
         sector=payload.sector,
         linkedin_url=payload.linkedin_url,
         with_companion=payload.with_companion,
+        companion_email=payload.companion_email if payload.with_companion else None,
+        companion_relationship=payload.companion_relationship if payload.with_companion else None,
         lgpd_consent=payload.lgpd_consent,
         consent_at=datetime.now(timezone.utc) if payload.lgpd_consent else None,
         status=LeadStatus.NEW,
@@ -229,6 +329,8 @@ async def create_lead(
     # Dispara confirmação imediata + funil de IA em background
     background_tasks.add_task(_send_confirmation, lead)
     background_tasks.add_task(_trigger_funnel, lead)
+    if lead.with_companion and lead.companion_email:
+        background_tasks.add_task(_send_companion_invite, lead)
 
     logger.info(f"[Route] Lead criado: id={lead.id} | email={lead.email}")
     return lead

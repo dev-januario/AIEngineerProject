@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Check-in — Vigil Summit 2026</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
+        rel="stylesheet" />
+    <!-- QR Code generator -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        :root {
+            --bg: #0a0a0f;
+            --surface: #13131a;
+            --border: rgba(255, 255, 255, 0.08);
+            --purple: #8b5cf6;
+            --purple-glow: #a78bfa;
+            --blue: #4f6ef7;
+            --text: #f1f5f9;
+            --text-muted: #64748b;
+            --green: #10b981;
+            --red: #ef4444;
+            --font: 'Inter', sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: var(--font);
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem 1rem;
+        }
+
+        /* ── DISPLAY MODE (organizer screen / print) ── */
+        .display-page {
+            text-align: center;
+            max-width: 640px;
+            width: 100%;
+        }
+
+        .display-brand {
+            font-size: 1.1rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 1.5rem;
+        }
+
+        .display-brand span {
+            color: var(--purple-glow);
+        }
+
+        .display-title {
+            font-size: clamp(2rem, 6vw, 3.2rem);
+            font-weight: 900;
+            line-height: 1.15;
+            margin-bottom: 0.5rem;
+        }
+
+        .display-title .accent {
+            color: var(--purple-glow);
+        }
+
+        .display-subtitle {
+            font-size: 1.1rem;
+            color: var(--text-muted);
+            margin-bottom: 2.5rem;
+            font-weight: 400;
+        }
+
+        .qr-wrapper {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: #fff;
+            border-radius: 20px;
+            padding: 20px;
+            margin-bottom: 2rem;
+            box-shadow: 0 0 60px rgba(139, 92, 246, 0.25);
+        }
+
+        .display-cta {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: var(--purple-glow);
+            margin-bottom: 0.5rem;
+        }
+
+        .display-cta-sub {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            margin-bottom: 2rem;
+        }
+
+        .display-gift-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: rgba(139, 92, 246, 0.12);
+            border: 1px solid rgba(139, 92, 246, 0.35);
+            border-radius: 999px;
+            padding: 0.5rem 1.25rem;
+            font-size: 0.9rem;
+            color: var(--purple-glow);
+            font-weight: 600;
+        }
+
+        /* ── SCAN MODE (attendee form) ── */
+        .scan-page {
+            width: 100%;
+            max-width: 460px;
+        }
+
+        .scan-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 2.5rem 2rem;
+            text-align: center;
+        }
+
+        .scan-logo {
+            font-size: 1rem;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            color: var(--text-muted);
+            margin-bottom: 1.5rem;
+        }
+
+        .scan-logo span {
+            color: var(--purple-glow);
+        }
+
+        .scan-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        .scan-title {
+            font-size: 1.6rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+        }
+
+        .scan-desc {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            margin-bottom: 2rem;
+            line-height: 1.6;
+        }
+
+        .form-group {
+            margin-bottom: 1.25rem;
+            text-align: left;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.78rem;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 0.4rem;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 0.8rem 1rem;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--text);
+            font-family: var(--font);
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .form-group input:focus {
+            border-color: var(--purple);
+        }
+
+        .checkin-btn {
+            width: 100%;
+            padding: 0.9rem;
+            background: linear-gradient(135deg, var(--purple), var(--blue));
+            border: none;
+            border-radius: 10px;
+            color: #fff;
+            font-family: var(--font);
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: opacity 0.2s, transform 0.1s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .checkin-btn:hover:not(:disabled) {
+            opacity: 0.9;
+        }
+
+        .checkin-btn:active:not(:disabled) {
+            transform: scale(0.98);
+        }
+
+        .checkin-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .field-error {
+            font-size: 0.75rem;
+            color: #f87171;
+            margin-top: 0.3rem;
+            min-height: 1rem;
+        }
+
+        /* Success / Error states */
+        .result-card {
+            border-radius: 16px;
+            padding: 2rem;
+            text-align: center;
+        }
+
+        .result-card.success {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .result-card.warning {
+            background: rgba(245, 158, 11, 0.1);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+
+        .result-card.error {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .result-icon {
+            font-size: 3.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .result-title {
+            font-size: 1.4rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+        }
+
+        .result-msg {
+            font-size: 0.95rem;
+            color: var(--text-muted);
+            line-height: 1.6;
+        }
+
+        /* Loader */
+        .loader {
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Print styles */
+        @media print {
+            body {
+                background: #fff;
+                color: #000;
+            }
+
+            .display-brand,
+            .display-cta,
+            .display-cta-sub,
+            .display-gift-badge {
+                color: #333;
+            }
+
+            .display-title .accent {
+                color: #6d28d9;
+            }
+
+            .qr-wrapper {
+                box-shadow: none;
+                border: 2px solid #ddd;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .scan-card {
+                padding: 1.75rem 1.25rem;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- ── DISPLAY MODE: organizer shows this on screen or prints ── -->
+    <div class="display-page" id="display-mode">
+        <div class="display-brand">Vigil<span>.AI</span> &nbsp;·&nbsp; Vigil Summit 2026</div>
+
+        <h1 class="display-title">
+            Confirme sua<br>
+            <span class="accent">Presença</span>
+        </h1>
+        <p class="display-subtitle">Escaneie o QR Code abaixo com a câmera do celular</p>
+
+        <div class="qr-wrapper">
+            <div id="qrcode"></div>
+        </div>
+
+        <p class="display-cta">📱 Aponte a câmera para o código</p>
+        <p class="display-cta-sub">Informe o email cadastrado para confirmar sua presença</p>
+
+        <div class="display-gift-badge">
+            🎁 &nbsp;Confirme a presença e garanta seu brinde exclusivo
+        </div>
+    </div>
+
+    <!-- ── SCAN MODE: attendee sees this after scanning ── -->
+    <div class="scan-page" id="scan-mode" style="display:none">
+        <div class="scan-card">
+            <div class="scan-logo">Vigil<span>.AI</span></div>
+
+            <!-- Form state -->
+            <div id="form-state">
+                <div class="scan-icon">🎫</div>
+                <h1 class="scan-title">Check-in do Evento</h1>
+                <p class="scan-desc">
+                    Informe o email com que você se inscreveu no Vigil Summit para confirmar sua presença.
+                </p>
+
+                <div class="form-group">
+                    <label for="checkin-email">Email de inscrição</label>
+                    <input type="email" id="checkin-email" placeholder="seu@email.com" autocomplete="email" />
+                    <div class="field-error" id="email-error"></div>
+                </div>
+
+                <button class="checkin-btn" id="checkin-btn" onclick="submitCheckin()">
+                    <span id="btn-text">✅ Confirmar Presença</span>
+                    <div class="loader" id="btn-loader" style="display:none"></div>
+                </button>
+            </div>
+
+            <!-- Success state -->
+            <div id="success-state" style="display:none">
+                <div class="result-card success">
+                    <div class="result-icon">🎉</div>
+                    <div class="result-title" id="success-title">Presença Confirmada!</div>
+                    <p class="result-msg" id="success-msg"></p>
+                </div>
+            </div>
+
+            <!-- Already checked in -->
+            <div id="already-state" style="display:none">
+                <div class="result-card warning">
+                    <div class="result-icon">✅</div>
+                    <div class="result-title">Já Confirmado!</div>
+                    <p class="result-msg" id="already-msg"></p>
+                </div>
+            </div>
+
+            <!-- Error state -->
+            <div id="error-state" style="display:none">
+                <div class="result-card error">
+                    <div class="result-icon">⚠️</div>
+                    <div class="result-title" id="error-title">Email não encontrado</div>
+                    <p class="result-msg" id="error-msg"></p>
+                </div>
+                <button class="checkin-btn" style="margin-top:1.25rem" onclick="resetForm()">
+                    Tentar novamente
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ── Detecta modo via query param ───────────────────────────────────────────
+        const params = new URLSearchParams(window.location.search);
+        const isScan = params.get('mode') === 'scan';
+
+        if (isScan) {
+            document.getElementById('display-mode').style.display = 'none';
+            document.getElementById('scan-mode').style.display = 'block';
+        } else {
+            // Gera QR Code apontando para a URL de scan
+            const scanUrl = `${window.location.origin}/checkin.html?mode=scan`;
+            new QRCode(document.getElementById('qrcode'), {
+                text: scanUrl,
+                width: 240,
+                height: 240,
+                colorDark: '#0a0a0f',
+                colorLight: '#ffffff',
+                correctLevel: QRCode.CorrectLevel.H,
+            });
+        }
+
+        // ── Check-in logic ─────────────────────────────────────────────────────────
+        async function submitCheckin() {
+            const email = document.getElementById('checkin-email').value.trim().toLowerCase();
+            const errEl = document.getElementById('email-error');
+            errEl.textContent = '';
+
+            if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                errEl.textContent = 'Informe um email válido.';
+                return;
+            }
+
+            const btn = document.getElementById('checkin-btn');
+            const text = document.getElementById('btn-text');
+            const loader = document.getElementById('btn-loader');
+            btn.disabled = true;
+            text.style.display = 'none';
+            loader.style.display = 'block';
+
+            try {
+                const res = await fetch('/api/v1/leads/checkin', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email }),
+                });
+
+                const data = await res.json().catch(() => ({}));
+
+                document.getElementById('form-state').style.display = 'none';
+
+                if (res.ok) {
+                    if (data.already_checked_in) {
+                        document.getElementById('already-msg').textContent = data.message;
+                        document.getElementById('already-state').style.display = 'block';
+                    } else {
+                        document.getElementById('success-title').textContent = `Bem-vindo(a), ${data.name?.split(' ')[0] || ''}!`;
+                        document.getElementById('success-msg').textContent = data.message;
+                        document.getElementById('success-state').style.display = 'block';
+                    }
+                } else {
+                    const msg = res.status === 404
+                        ? 'Esse email não está cadastrado no evento. Verifique se digitou corretamente ou use o email com que fez a inscrição.'
+                        : (data.detail || 'Erro inesperado. Procure um organizador.');
+                    document.getElementById('error-title').textContent = res.status === 404 ? 'Email não encontrado' : 'Erro';
+                    document.getElementById('error-msg').textContent = msg;
+                    document.getElementById('error-state').style.display = 'block';
+                }
+            } catch (_) {
+                document.getElementById('form-state').style.display = 'none';
+                document.getElementById('error-title').textContent = 'Sem conexão';
+                document.getElementById('error-msg').textContent = 'Verifique sua internet e tente novamente.';
+                document.getElementById('error-state').style.display = 'block';
+            } finally {
+                btn.disabled = false;
+                text.style.display = 'inline';
+                loader.style.display = 'none';
+            }
+        }
+
+        function resetForm() {
+            document.getElementById('form-state').style.display = 'block';
+            document.getElementById('error-state').style.display = 'none';
+            document.getElementById('already-state').style.display = 'none';
+            document.getElementById('success-state').style.display = 'none';
+            document.getElementById('checkin-email').value = '';
+            document.getElementById('email-error').textContent = '';
+        }
+
+        // Confirma ao pressionar Enter
+        document.getElementById('checkin-email')?.addEventListener('keydown', e => {
+            if (e.key === 'Enter') submitCheckin();
+        });
+    </script>
+</body>
+
+</html>

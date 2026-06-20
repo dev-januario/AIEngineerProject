@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -8,6 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/admin/admin.css" />
 </head>
+
 <body>
 
   <div class="dashboard-layout">
@@ -48,8 +50,10 @@
       <div class="sidebar-footer">
         <div style="font-size:0.75rem;color:var(--text-muted);padding:0 0.5rem;margin-bottom:0.5rem">
           Logado como <strong id="admin-username" style="color:var(--text-secondary)">—</strong>
-        </div>
-        <button class="logout-btn" onclick="logout()">
+        </div> <a href="/" class="logout-btn"
+          style="display:flex;align-items:center;gap:0.5rem;text-decoration:none;margin-bottom:0.5rem">
+          <span>🏠</span> Ver site
+        </a> <button class="logout-btn" onclick="logout()">
           <span>🚪</span> Sair
         </button>
       </div>
@@ -62,14 +66,27 @@
       <div class="content-panel active" id="panel-overview">
         <div class="panel-header">
           <h1>Visão Geral</h1>
-          <p>Status do Vigil Summit em tempo real</p>
+          <p>Status do Vigil Summit em tempo real &nbsp;·&nbsp; <a href="/checkin.html" target="_blank"
+              style="color:var(--purple-glow);text-decoration:none;font-size:0.85rem">📱 Página de Check-in</a></p>
         </div>
 
         <div class="stat-cards" id="overview-stats">
-          <div class="stat-card"><div class="stat-card-label">Inscritos</div><div class="stat-card-value" id="stat-total">—</div></div>
-          <div class="stat-card"><div class="stat-card-label">Confirmados</div><div class="stat-card-value" id="stat-confirmed">—</div></div>
-          <div class="stat-card"><div class="stat-card-label">Enriquecidos</div><div class="stat-card-value" id="stat-enriched">—</div></div>
-          <div class="stat-card"><div class="stat-card-label">Reuniões</div><div class="stat-card-value" id="stat-meetings">—</div></div>
+          <div class="stat-card">
+            <div class="stat-card-label">Inscritos</div>
+            <div class="stat-card-value" id="stat-total">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-label">Confirmados</div>
+            <div class="stat-card-value" id="stat-confirmed">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-label">Presentes</div>
+            <div class="stat-card-value" id="stat-attended">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-label">Reuniões</div>
+            <div class="stat-card-value" id="stat-meetings">—</div>
+          </div>
         </div>
 
         <div class="section-card">
@@ -81,7 +98,10 @@
           <h2>⏱️ Próximo Disparo Agendado</h2>
           <div id="scheduler-summary">
             <div class="scheduler-box">
-              <div><div class="scheduler-label">Pós-evento disparará em</div><div class="scheduler-countdown" id="countdown-display">Sem job agendado</div></div>
+              <div>
+                <div class="scheduler-label">Pós-evento disparará em</div>
+                <div class="scheduler-countdown" id="countdown-display">Sem job agendado</div>
+              </div>
               <div id="countdown-timer" style="font-size:0.8rem;color:var(--text-muted)"></div>
             </div>
           </div>
@@ -127,14 +147,16 @@
             <div class="form-row single">
               <div>
                 <label>Palestrantes (um por linha)</label>
-                <textarea id="ev-speakers" rows="4" placeholder="João Silva&#10;Maria Costa&#10;Carlos Alves"></textarea>
+                <textarea id="ev-speakers" rows="4"
+                  placeholder="João Silva&#10;Maria Costa&#10;Carlos Alves"></textarea>
               </div>
             </div>
             <div class="form-row">
               <div>
                 <label>Delay pós-evento (minutos)</label>
                 <input type="number" id="ev-delay" min="1" value="3" />
-                <div class="field-hint">Minutos que o sistema aguarda após encerramento para disparar o follow-up. Use 3 para testes.</div>
+                <div class="field-hint">Minutos que o sistema aguarda após encerramento para disparar o follow-up. Use 3
+                  para testes.</div>
               </div>
             </div>
             <div class="actions-row">
@@ -144,16 +166,24 @@
         </div>
 
         <div class="section-card">
-          <h2>🔴 Encerrar Evento</h2>
-          <p style="color:var(--text-secondary);font-size:0.88rem;margin-bottom:1.25rem">
-            Ao encerrar, o sistema aguarda o delay configurado e então dispara automaticamente a régua de follow-up para todos os participantes.
-          </p>
+          <h2>🔴 Encerrar o Evento</h2>
+          <div
+            style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.28);border-radius:8px;padding:0.85rem 1rem;margin-bottom:1.25rem;font-size:0.83rem;color:#fca5a5;line-height:1.65">
+            <strong style="color:#f87171;display:block;margin-bottom:0.35rem">⚠️ O que acontece ao encerrar:</strong>
+            1. O evento é marcado como <strong>ENCERRADO</strong> no sistema.<br>
+            2. Após o delay configurado (<strong><span id="delay-label-info">3</span> min</strong>), o sistema envia
+            automaticamente os emails e mensagens de follow-up para <strong>todos os participantes
+              inscritos</strong>.<br>
+            3. <strong>Esta ação não pode ser desfeita.</strong> Use o "Disparo de Teste" no painel Agendamento para
+            validar antes.
+          </div>
           <div class="actions-row">
             <button class="btn-danger" onclick="endEventNow()">
-              🛑 Encerrar Agora (<span id="delay-label">3</span> min delay)
+              🛑 Encerrar Agora (<span id="delay-label">3</span> min para follow-up)
             </button>
             <div style="display:flex;align-items:center;gap:0.5rem">
-              <input type="datetime-local" id="schedule-end-at" style="background:rgba(255,255,255,0.04);border:1px solid var(--border-subtle);border-radius:6px;padding:0.5rem;color:var(--text-primary);font-family:var(--font);font-size:0.82rem;outline:none" />
+              <input type="datetime-local" id="schedule-end-at"
+                style="background:rgba(255,255,255,0.04);border:1px solid var(--border-subtle);border-radius:6px;padding:0.5rem;color:var(--text-primary);font-family:var(--font);font-size:0.82rem;outline:none" />
               <button class="btn-outline" onclick="scheduleEnd()">📅 Agendar Encerramento</button>
             </div>
           </div>
@@ -173,7 +203,15 @@
             <button class="btn-outline" onclick="openTemplateModal()">+ Novo Template</button>
           </div>
           <p style="font-size:0.78rem;color:var(--text-muted);margin:0.5rem 0 1rem">
-            Variáveis disponíveis: <code style="color:var(--purple-glow)">{{NOME}}</code> <code style="color:var(--purple-glow)">{{PRIMEIRO_NOME}}</code> <code style="color:var(--purple-glow)">{{CARGO}}</code> <code style="color:var(--purple-glow)">{{EMPRESA}}</code> <code style="color:var(--purple-glow)">{{DATA_EVENTO}}</code> <code style="color:var(--purple-glow)">{{HORA_EVENTO}}</code> <code style="color:var(--purple-glow)">{{LOCAL_EVENTO}}</code> <code style="color:var(--purple-glow)">{{NOME_EVENTO}}</code> <code style="color:var(--purple-glow)">{{PALESTRANTES}}</code>
+            Variáveis disponíveis: <code style="color:var(--purple-glow)">{{NOME}}</code> <code
+              style="color:var(--purple-glow)">{{PRIMEIRO_NOME}}</code> <code
+              style="color:var(--purple-glow)">{{CARGO}}</code> <code
+              style="color:var(--purple-glow)">{{EMPRESA}}</code> <code
+              style="color:var(--purple-glow)">{{DATA_EVENTO}}</code> <code
+              style="color:var(--purple-glow)">{{HORA_EVENTO}}</code> <code
+              style="color:var(--purple-glow)">{{LOCAL_EVENTO}}</code> <code
+              style="color:var(--purple-glow)">{{NOME_EVENTO}}</code> <code
+              style="color:var(--purple-glow)">{{PALESTRANTES}}</code>
           </p>
           <div id="templates-list">
             <div style="color:var(--text-muted);font-size:0.88rem">Carregando templates...</div>
@@ -192,13 +230,16 @@
           <div class="leads-filter" id="leads-filter">
             <button class="filter-btn active" data-filter="all" onclick="filterLeads('all', this)">Todos</button>
             <button class="filter-btn" data-filter="new" onclick="filterLeads('new', this)">Novos</button>
-            <button class="filter-btn" data-filter="enriched" onclick="filterLeads('enriched', this)">Enriquecidos</button>
-            <button class="filter-btn" data-filter="confirmed" onclick="filterLeads('confirmed', this)">Confirmados</button>
-            <button class="filter-btn" data-filter="meeting_booked" onclick="filterLeads('meeting_booked', this)">Reunião</button>
+            <button class="filter-btn" data-filter="enriched"
+              onclick="filterLeads('enriched', this)">Enriquecidos</button>
+            <button class="filter-btn" data-filter="confirmed"
+              onclick="filterLeads('confirmed', this)">Confirmados</button>
+            <button class="filter-btn" data-filter="meeting_booked"
+              onclick="filterLeads('meeting_booked', this)">Reunião</button>
           </div>
           <div style="overflow-x:auto">
             <table class="leads-table" id="leads-table">
-              <thead>
+              <thead id="leads-thead">
                 <tr>
                   <th>Nome</th>
                   <th>Email</th>
@@ -210,7 +251,9 @@
                 </tr>
               </thead>
               <tbody id="leads-tbody">
-                <tr><td colspan="7" style="color:var(--text-muted);text-align:center;padding:2rem">Carregando...</td></tr>
+                <tr>
+                  <td colspan="7" style="color:var(--text-muted);text-align:center;padding:2rem">Carregando...</td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -239,14 +282,16 @@
         </div>
 
         <div class="section-card">
-          <h2>Configurações Rápidas de Teste</h2>
-          <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:1rem">
-            Estes botões facilitam os testes antes do dia 21. O disparo irá para todos os participantes inscritos.
-          </p>
+          <h2>🧪 Disparo de Teste</h2>
+          <div
+            style="background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.28);border-radius:8px;padding:0.85rem 1rem;margin-bottom:1rem;font-size:0.83rem;color:#fde68a;line-height:1.65">
+            <strong style="color:#fbbf24;display:block;margin-bottom:0.35rem">💡 Para que serve:</strong>
+            Simula o envio dos emails e mensagens de follow-up pós-evento sem encerrar o evento e sem alterar nenhuma
+            configuração. Use para validar se os templates estão corretos <strong>antes do dia do evento</strong>.
+          </div>
           <div class="actions-row">
-            <button class="btn-outline" onclick="triggerIn(1)">⚡ Disparar em 1 min</button>
-            <button class="btn-outline" onclick="triggerIn(3)">🕒 Disparar em 3 min</button>
-            <button class="btn-danger" onclick="triggerIn(0.1)">🔴 Disparar Agora</button>
+            <button class="btn-outline" onclick="triggerIn(1)">⚡ Simular em 1 min</button>
+            <button class="btn-outline" onclick="triggerIn(3)">🕒 Simular em 3 min</button>
           </div>
         </div>
       </div>
@@ -271,9 +316,11 @@
           <div>
             <label>Fase</label>
             <select id="tpl-phase">
-              <option value="confirmation">Confirmação</option>
+              <option value="confirmation">Confirmação de Inscrição</option>
               <option value="pre_event">Pré-evento</option>
-              <option value="post_event">Pós-evento</option>
+              <option value="post_event">Pós-evento (genérico)</option>
+              <option value="post_event_attended">Pós-evento — Presente (agradecimento)</option>
+              <option value="post_event_no_show">Pós-evento — Ausente (conforto)</option>
             </select>
           </div>
         </div>
@@ -305,7 +352,8 @@
         </div>
         <label style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;cursor:pointer">
           <input type="checkbox" id="tpl-active" checked />
-          <span style="font-size:0.82rem;color:var(--text-secondary);text-transform:none;letter-spacing:0">Template ativo</span>
+          <span style="font-size:0.82rem;color:var(--text-secondary);text-transform:none;letter-spacing:0">Template
+            ativo</span>
         </label>
       </form>
       <div class="modal-actions">
@@ -320,4 +368,5 @@
 
   <script src="/admin/admin.js"></script>
 </body>
+
 </html>

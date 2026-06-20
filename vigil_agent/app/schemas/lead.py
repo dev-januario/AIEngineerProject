@@ -19,12 +19,23 @@ class LeadBase(BaseModel):
     sector: str | None = Field(None, examples=["Financeiro"])
     linkedin_url: str | None = Field(None, examples=["https://linkedin.com/in/carlos-mendes"])
     with_companion: bool = Field(False, description="Vai levar acompanhante ao evento?")
+    companion_email: str | None = Field(None, description="Email do acompanhante (obrigatório quando with_companion=True)")
+    companion_relationship: str | None = Field(
+        None,
+        description="Tipo de relação com o acompanhante: colleague | friend | spouse | child | other",
+    )
     lgpd_consent: bool = Field(False, description="Consentimento LGPD obrigatório")
 
     @model_validator(mode="after")
     def check_lgpd_consent(self) -> "LeadBase":
         if not self.lgpd_consent:
             raise ValueError("Consentimento LGPD é obrigatório para processamento dos dados.")
+        return self
+
+    @model_validator(mode="after")
+    def check_companion_email(self) -> "LeadBase":
+        if self.with_companion and not self.companion_email:
+            raise ValueError("O email do acompanhante é obrigatório quando 'with_companion' é verdadeiro.")
         return self
 
 
@@ -66,6 +77,8 @@ class LeadRead(BaseModel):
     sector: str | None
     linkedin_url: str | None
     with_companion: bool
+    companion_email: str | None
+    companion_relationship: str | None
     enrichment_data: dict[str, Any] | None
     qualification_score: float | None
     status: LeadStatus

@@ -48,7 +48,7 @@ ALGORITHM = "HS256"
 
 
 def _create_token(username: str) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(hours=settings.admin_jwt_expire_hours)
+    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.admin_jwt_expire_minutes)
     return jwt.encode(
         {"sub": username, "exp": expire},
         settings.admin_jwt_secret,
@@ -275,6 +275,36 @@ async def schedule_event_end(
 async def _dispatch_post_event_sequence_wrapper(delay_minutes: int):
     from app.services.scheduler import schedule_post_event
     schedule_post_event(delay_minutes=delay_minutes)
+
+
+class TriggerTestRequest(BaseModel):
+    delay_minutes: int = 1
+
+
+@router.post(
+    "/scheduler/trigger-test",
+    response_model=dict,
+    summary="Disparar follow-up de teste (sem encerrar o evento)",
+)
+async def trigger_test(
+    payload: TriggerTestRequest,
+    _: Annotated[AdminUser, Depends(get_current_admin)],
+):
+    """
+    Agenda o disparo da régua pós-evento para fins de teste.
+    NÃO altera o status do evento nem sobrescreve nenhuma configuração.
+    """
+    from app.services.scheduler import schedule_post_event
+
+    delay = max(1, payload.delay_minutes)
+    run_at = schedule_post_event(delay_minutes=delay)
+
+    logger.info(f"[Admin] Disparo de teste agendado para {run_at.isoformat()} (delay={delay} min)")
+    return {
+        "message": "Disparo de teste agendado com sucesso",
+        "scheduled_at": run_at.isoformat(),
+        "delay_minutes": delay,
+    }
 
 
 # ── Endpoints: Templates ──────────────────────────────────────────────────────

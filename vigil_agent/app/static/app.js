@@ -147,9 +147,9 @@ setInterval(loadSpots, 30000);
 let profileMode = 'linkedin';
 
 const linkedinYesBtn = document.getElementById('linkedin-yes-btn');
-const linkedinNoBtn  = document.getElementById('linkedin-no-btn');
+const linkedinNoBtn = document.getElementById('linkedin-no-btn');
 const linkedinSection = document.getElementById('linkedin-section');
-const manualSection   = document.getElementById('manual-section');
+const manualSection = document.getElementById('manual-section');
 
 function setProfileMode(mode) {
   profileMode = mode;
@@ -167,20 +167,27 @@ function setProfileMode(mode) {
 }
 
 linkedinYesBtn?.addEventListener('click', () => setProfileMode('linkedin'));
-linkedinNoBtn?.addEventListener('click',  () => setProfileMode('manual'));
+linkedinNoBtn?.addEventListener('click', () => setProfileMode('manual'));
 
 
 // ── Companion Toggle ───────────────────────────────────────
+const companionSection = document.getElementById('companion-section');
+
 document.getElementById('companion-no')?.addEventListener('click', function () {
   this.classList.add('active');
   document.getElementById('companion-yes').classList.remove('active');
   document.getElementById('with_companion').value = 'false';
+  if (companionSection) companionSection.hidden = true;
+  // Limpa erros ao esconder
+  clearFieldError('companion_email', 'companion-email-error');
+  clearFieldError('companion_relationship', 'companion-relationship-error');
 });
 
 document.getElementById('companion-yes')?.addEventListener('click', function () {
   this.classList.add('active');
   document.getElementById('companion-no').classList.remove('active');
   document.getElementById('with_companion').value = 'true';
+  if (companionSection) companionSection.hidden = false;
 });
 
 
@@ -264,6 +271,24 @@ function validateForm() {
     if (lgpdError) lgpdError.textContent = '';
   }
 
+  // Acompanhante — campos obrigatórios quando "Sim" for selecionado
+  const withCompanion = document.getElementById('with_companion').value === 'true';
+  if (withCompanion) {
+    clearFieldError('companion_email', 'companion-email-error');
+    const companionEmail = (document.getElementById('companion_email')?.value || '').trim();
+    if (!companionEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(companionEmail)) {
+      setFieldError('companion_email', 'companion-email-error', 'Informe um email válido para o acompanhante.');
+      valid = false;
+    }
+
+    clearFieldError('companion_relationship', 'companion-relationship-error');
+    const companionRel = document.getElementById('companion_relationship')?.value || '';
+    if (!companionRel) {
+      setFieldError('companion_relationship', 'companion-relationship-error', 'Selecione o tipo de relação com o acompanhante.');
+      valid = false;
+    }
+  }
+
   return valid;
 }
 
@@ -271,14 +296,14 @@ function validateForm() {
 // ── Form Submit ────────────────────────────────────────────
 const form = document.getElementById('registration-form');
 const submitBtn = document.getElementById('submit-btn');
-const submitText   = submitBtn?.querySelector('.submit-text');
-const submitArrow  = submitBtn?.querySelector('.submit-arrow');
+const submitText = submitBtn?.querySelector('.submit-text');
+const submitArrow = submitBtn?.querySelector('.submit-arrow');
 const submitLoader = submitBtn?.querySelector('.submit-loader');
 
 function setLoading(loading) {
   submitBtn.disabled = loading;
-  if (submitText)   submitText.hidden   = loading;
-  if (submitArrow)  submitArrow.hidden  = loading;
+  if (submitText) submitText.hidden = loading;
+  if (submitArrow) submitArrow.hidden = loading;
   if (submitLoader) submitLoader.hidden = !loading;
 }
 
@@ -291,13 +316,13 @@ function showError(title, message) {
   form.hidden = true;
   const errorState = document.getElementById('error-state');
   errorState.hidden = false;
-  document.getElementById('error-title').textContent   = title;
+  document.getElementById('error-title').textContent = title;
   document.getElementById('error-message').textContent = message;
 }
 
 window.resetForm = function () {
   form.hidden = false;
-  document.getElementById('error-state').hidden   = true;
+  document.getElementById('error-state').hidden = true;
   document.getElementById('success-state').hidden = true;
 };
 
@@ -313,13 +338,19 @@ form?.addEventListener('submit', async (e) => {
   }
 
   // Monta payload conforme o modo ativo
+  const withCompanion = document.getElementById('with_companion').value === 'true';
   const payload = {
-    name:           document.getElementById('name').value.trim(),
-    email:          document.getElementById('email').value.trim().toLowerCase(),
-    phone:          document.getElementById('phone').value.trim(),
-    with_companion: document.getElementById('with_companion').value === 'true',
-    lgpd_consent:   document.getElementById('lgpd_consent').checked,
+    name: document.getElementById('name').value.trim(),
+    email: document.getElementById('email').value.trim().toLowerCase(),
+    phone: document.getElementById('phone').value.trim(),
+    with_companion: withCompanion,
+    lgpd_consent: document.getElementById('lgpd_consent').checked,
   };
+
+  if (withCompanion) {
+    payload.companion_email = (document.getElementById('companion_email')?.value || '').trim().toLowerCase();
+    payload.companion_relationship = document.getElementById('companion_relationship')?.value || null;
+  }
 
   if (profileMode === 'linkedin') {
     // Modo LinkedIn: envia somente a URL; o agente busca role, company, sector
@@ -327,12 +358,12 @@ form?.addEventListener('submit', async (e) => {
     if (username) payload.linkedin_url = `https://www.linkedin.com/in/${username}`;
   } else {
     // Modo manual: envia todos os campos profissionais
-    payload.role    = (document.getElementById('role')?.value || '').trim() || null;
+    payload.role = (document.getElementById('role')?.value || '').trim() || null;
     payload.company = (document.getElementById('company')?.value || '').trim() || null;
     const companySize = document.getElementById('company_size')?.value;
-    const sector      = document.getElementById('sector')?.value;
+    const sector = document.getElementById('sector')?.value;
     if (companySize) payload.company_size = companySize;
-    if (sector)      payload.sector       = sector;
+    if (sector) payload.sector = sector;
   }
 
   setLoading(true);
@@ -388,4 +419,12 @@ document.getElementById('role')?.addEventListener('input', () => {
 
 document.getElementById('company')?.addEventListener('input', () => {
   clearFieldError('company', 'company-error');
+});
+
+document.getElementById('companion_email')?.addEventListener('input', () => {
+  clearFieldError('companion_email', 'companion-email-error');
+});
+
+document.getElementById('companion_relationship')?.addEventListener('change', () => {
+  clearFieldError('companion_relationship', 'companion-relationship-error');
 });

@@ -17,6 +17,7 @@ from string import Template
 import aiosmtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.utils import make_msgid
 
 from app.core.config import settings
 
@@ -134,6 +135,7 @@ async def send_email(
 
     try:
         msg = MIMEMultipart("alternative")
+        msg["Message-ID"] = make_msgid(domain="vigilai.com")
         msg["Subject"] = subject
         msg["From"] = f"{settings.email_from_name} <{settings.smtp_user}>"
         msg["To"] = email

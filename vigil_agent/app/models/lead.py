@@ -93,6 +93,10 @@ class Lead(Base):
     # ── Event Registration ────────────────────────────────────────────────────
     # Se o participante vai levar acompanhante (gatilho de régua de engajamento)
     with_companion: Mapped[bool] = mapped_column(default=False, nullable=False)
+    # Email do acompanhante — obrigatório quando with_companion=True; recebe notificação e link para preencher o formulário
+    companion_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Tipo de relação com o acompanhante: colleague | friend | spouse | child | other
+    companion_relationship: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     # ── LGPD / Consent ───────────────────────────────────────────────────────
     lgpd_consent: Mapped[bool] = mapped_column(default=False, nullable=False)

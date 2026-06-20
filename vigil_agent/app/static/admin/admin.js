@@ -4,7 +4,7 @@
 // ============================================================
 
 const TOKEN_KEY = 'vigil_admin_token';
-const USER_KEY  = 'vigil_admin_user';
+const USER_KEY = 'vigil_admin_user';
 
 // ── Auth helpers ───────────────────────────────────────────
 function getToken() { return localStorage.getItem(TOKEN_KEY); }
@@ -90,14 +90,14 @@ async function loadOverview() {
 
     document.getElementById('stat-total').textContent = leads.length;
     document.getElementById('stat-confirmed').textContent =
-      leads.filter(l => ['confirmed','attended'].includes(l.status)).length;
-    document.getElementById('stat-enriched').textContent =
-      leads.filter(l => l.status !== 'new').length;
+      leads.filter(l => ['confirmed', 'attended'].includes(l.status)).length;
+    document.getElementById('stat-attended').textContent =
+      leads.filter(l => l.attended === true).length;
     document.getElementById('stat-meetings').textContent =
       leads.filter(l => l.status === 'meeting_booked').length;
 
     if (event) {
-      const statusMap = { active: '🟢 Ativo', ended: '🔴 Encerrado', draft: '🟡 Rascunho' };
+      const statusMap = { ACTIVE: '🟢 Ativo', ENDED: '🔴 Encerrado', DRAFT: '🟡 Rascunho', active: '🟢 Ativo', ended: '🔴 Encerrado', draft: '🟡 Rascunho' };
       document.getElementById('event-status-summary').innerHTML = `
         <strong>${event.name}</strong><br>
         ${statusMap[event.status] || event.status} &nbsp;·&nbsp;
@@ -146,13 +146,17 @@ async function loadEvent() {
     document.getElementById('ev-speakers').value = (event.speakers || []).join('\n');
     document.getElementById('ev-delay').value = event.post_event_delay_minutes || 3;
     document.getElementById('delay-label').textContent = event.post_event_delay_minutes || 3;
+    const infoEl = document.getElementById('delay-label-info');
+    if (infoEl) infoEl.textContent = event.post_event_delay_minutes || 3;
   } catch (e) {
     showToast(`Erro ao carregar evento: ${e.message}`, 'error');
   }
 }
 
-document.getElementById('ev-delay')?.addEventListener('input', function() {
+document.getElementById('ev-delay')?.addEventListener('input', function () {
   document.getElementById('delay-label').textContent = this.value;
+  const infoEl = document.getElementById('delay-label-info');
+  if (infoEl) infoEl.textContent = this.value;
 });
 
 async function saveEvent() {
@@ -178,7 +182,15 @@ async function saveEvent() {
 }
 
 async function endEventNow() {
-  if (!confirm('Tem certeza que deseja encerrar o evento? O follow-up será disparado automaticamente.')) return;
+  const delay = document.getElementById('ev-delay')?.value || '3';
+  const confirmed = confirm(
+    `⚠️ VOCÊ ESTÁ PRESTES A ENCERRAR O EVENTO.\n\n` +
+    `O que acontecerá ao confirmar:\n` +
+    `• O evento será marcado como ENCERRADO no sistema.\n` +
+    `• Após ${delay} minuto(s), emails e WhatsApp de follow-up serão enviados para TODOS os participantes inscritos.\n\n` +
+    `❌ Esta ação não pode ser desfeita. Deseja continuar?`
+  );
+  if (!confirmed) return;
   try {
     const result = await api('POST', '/admin/event/end');
     const when = result?.post_event_scheduled_at
@@ -225,10 +237,10 @@ function renderTemplates(templates) {
     return;
   }
 
-  const phaseTag = { pre_event:'tag-pre', post_event:'tag-post', confirmation:'tag-confirm', reply:'tag-pre' };
-  const phaseLabel = { pre_event:'Pré-evento', post_event:'Pós-evento', confirmation:'Confirmação', reply:'Reply' };
-  const channelTag = { email:'tag-email', whatsapp:'tag-whatsapp', both:'tag-both' };
-  const channelLabel = { email:'Email', whatsapp:'WhatsApp', both:'Email+WA' };
+  const phaseTag = { pre_event: 'tag-pre', post_event: 'tag-post', confirmation: 'tag-confirm', reply: 'tag-pre', post_event_attended: 'tag-post', post_event_no_show: 'tag-pre' };
+  const phaseLabel = { pre_event: 'Pré-evento', post_event: 'Pós-evento', confirmation: 'Confirmação', reply: 'Reply', post_event_attended: 'Pós — Presente', post_event_no_show: 'Pós — Ausente' };
+  const channelTag = { email: 'tag-email', whatsapp: 'tag-whatsapp', both: 'tag-both' };
+  const channelLabel = { email: 'Email', whatsapp: 'WhatsApp', both: 'Email+WA' };
 
   listEl.innerHTML = templates.map(t => `
     <div class="template-item">
@@ -312,6 +324,10 @@ async function deleteTemplate(id) {
 // ── Leads ──────────────────────────────────────────────────
 let allLeads = [];
 
+let currentFilter = 'all';
+
+const CONFIRMED_STATUSES = new Set(['confirmed', 'attended', 'followed_up', 'meeting_booked']);
+
 async function loadLeads() {
   try {
     allLeads = await api('GET', '/admin/leads') || [];
@@ -324,32 +340,57 @@ async function loadLeads() {
 function filterLeads(status, btn) {
   document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  const filtered = status === 'all' ? allLeads : allLeads.filter(l => l.status === status || l.funnel_phase === status);
+  currentFilter = status;
+
+  let filtered;
+  if (status === 'all') filtered = allLeads;
+
+  else if (status === 'enriched') filtered = allLeads.filter(l => l.status === 'enriched');
+  else if (status === 'confirmed') filtered = allLeads.filter(l => CONFIRMED_STATUSES.has(l.status));
+  else filtered = allLeads.filter(l => l.status === status || l.funnel_phase === status);
+
   renderLeads(filtered);
 }
 
 function renderLeads(leads) {
   const tbody = document.getElementById('leads-tbody');
+  const thead = document.getElementById('leads-thead');
+  const isMeeting = currentFilter === 'meeting_booked';
+
+  // Cabeçalho dinâmico
+  if (isMeeting) {
+    thead.innerHTML = `<tr>
+      <th>NOME</th><th>EMAIL</th><th>EMPRESA</th><th>CARGO</th><th>STATUS</th><th>AGENDADA PARA</th><th>INSCRITO EM</th>
+    </tr>`;
+  } else {
+    thead.innerHTML = `<tr>
+      <th>NOME</th><th>EMAIL</th><th>EMPRESA</th><th>CARGO</th><th>STATUS</th><th>ACOMP.</th><th>INSCRITO EM</th>
+    </tr>`;
+  }
+
   if (!leads.length) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--text-muted)">Nenhum participante encontrado.</td></tr>';
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--text-muted)">Nenhum participante encontrado.</td></tr>`;
     return;
   }
 
-  tbody.innerHTML = leads.map(l => `
-    <tr>
+  tbody.innerHTML = leads.map(l => {
+    const col6 = isMeeting
+      ? escapeHtml(l.last_contacted_at ? new Date(l.last_contacted_at).toLocaleString('pt-BR') : '—')
+      : (l.with_companion ? '✅' : '—');
+    return `<tr>
       <td class="lead-name">${escapeHtml(l.name)}</td>
       <td>${escapeHtml(l.email)}</td>
       <td>${escapeHtml(l.company || '—')}</td>
       <td>${escapeHtml(l.role || '—')}</td>
-      <td><span class="status-badge status-${l.status}">${l.status.replace('_', ' ')}</span></td>
-      <td style="text-align:center">${l.with_companion ? '✅' : '—'}</td>
+      <td><span class="status-badge status-${l.status}">${l.status.replace(/_/g, ' ')}</span></td>
+      <td style="text-align:center">${col6}</td>
       <td>${new Date(l.created_at).toLocaleDateString('pt-BR')}</td>
-    </tr>
-  `).join('');
+    </tr>`;
+  }).join('');
 }
 
 function escapeHtml(str) {
-  return String(str || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  return String(str || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
 
@@ -369,18 +410,21 @@ async function refreshScheduler() {
 }
 
 async function triggerIn(minutes) {
-  const label = minutes < 1 ? 'agora' : `em ${minutes} min`;
-  if (!confirm(`Disparar o follow-up pós-evento ${label}?`)) return;
+  const label = minutes <= 1 ? '1 minuto' : `${minutes} minutos`;
+  const confirmed = confirm(
+    `🧪 SIMULAÇÃO DE FOLLOW-UP PÓS-EVENTO\n\n` +
+    `Os emails e mensagens de follow-up serão enviados para todos os participantes em ${label}.\n\n` +
+    `✅ O status do evento NÃO será alterado.\n` +
+    `✅ Nenhuma configuração será modificada.\n\n` +
+    `Confirma o disparo de teste?`
+  );
+  if (!confirmed) return;
   try {
-    // Encerra o evento e deixa o delay configurado fazer o trabalho
-    // Para trigger imediato, usamos delay mínimo
-    const evRes = await api('GET', '/admin/event');
-    if (!evRes) return;
-
-    // Salva delay temporário
-    await api('PUT', '/admin/event', { post_event_delay_minutes: Math.max(1, Math.round(minutes)) });
-    const result = await api('POST', '/admin/event/end');
-    showToast(`✅ Follow-up disparado ${label}!`);
+    const result = await api('POST', '/admin/scheduler/trigger-test', { delay_minutes: minutes });
+    const when = result?.scheduled_at
+      ? new Date(result.scheduled_at).toLocaleString('pt-BR')
+      : '?';
+    showToast(`✅ Disparo de teste agendado para: ${when}`);
     refreshScheduler();
   } catch (e) {
     showToast(`Erro: ${e.message}`, 'error');

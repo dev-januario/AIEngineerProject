@@ -93,6 +93,8 @@ CREATE TABLE IF NOT EXISTS leads (
     event_notes     TEXT            NULL,
     attended        TINYINT(1)      NULL,
     with_companion  TINYINT(1)      NOT NULL DEFAULT 0,
+    companion_email         VARCHAR(255)    NULL     COMMENT 'Email do acompanhante; recebe convite para preencher o formulario',
+    companion_relationship  VARCHAR(50)     NULL     COMMENT 'Vinculo: colleague | friend | spouse | child | other',
     lgpd_consent    TINYINT(1)      NOT NULL DEFAULT 0,
     consent_at      DATETIME        NULL,
     created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -116,7 +118,7 @@ CREATE TABLE IF NOT EXISTS events (
     description                 TEXT            NULL,
     speakers                    JSON            NULL     COMMENT 'Lista de palestrantes',
     post_event_delay_minutes    INT             NOT NULL DEFAULT 3,
-    status                      ENUM('draft', 'active', 'ended') NOT NULL DEFAULT 'active',
+    status                      ENUM('DRAFT', 'ACTIVE', 'ENDED') NOT NULL DEFAULT 'ACTIVE',
     scheduled_end_at            DATETIME        NULL,
     ended_at                    DATETIME        NULL,
     created_at                  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -131,8 +133,8 @@ TABLES.append(("message_templates", """
 CREATE TABLE IF NOT EXISTS message_templates (
     id              INT             NOT NULL AUTO_INCREMENT,
     name            VARCHAR(255)    NOT NULL,
-    phase           ENUM('pre_event', 'confirmation', 'post_event', 'reply') NOT NULL,
-    channel         ENUM('email', 'whatsapp', 'both') NOT NULL,
+    phase           ENUM('pre_event', 'confirmation', 'post_event', 'post_event_attended', 'post_event_no_show', 'reply') NOT NULL,
+    channel         ENUM('EMAIL', 'WHATSAPP', 'BOTH') NOT NULL,
     subject         VARCHAR(500)    NULL,
     body            TEXT            NOT NULL,
     sequence_order  INT             NOT NULL DEFAULT 1,
@@ -160,6 +162,59 @@ CREATE TABLE IF NOT EXISTS admin_users (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   COMMENT='Usuarios com acesso ao painel administrativo do Vigil Summit';
 """))
+
+
+# ── Colunas novas que podem não existir em bancos já criados ─────────────────
+# Lista de (tabela, coluna, DDL da coluna)
+ALTER_COLUMNS: list[tuple[str, str, str]] = [
+    (
+        "leads",
+        "companion_email",
+        "ALTER TABLE `leads` ADD COLUMN `companion_email` VARCHAR(255) NULL "
+        "COMMENT 'Email do acompanhante; recebe convite para preencher o formulario' "
+        "AFTER `with_companion`",
+    ),
+    (
+        "leads",
+        "companion_relationship",
+        "ALTER TABLE `leads` ADD COLUMN `companion_relationship` VARCHAR(50) NULL "
+        "COMMENT 'Vinculo: colleague | friend | spouse | child | other' "
+        "AFTER `companion_email`",
+    ),
+    (
+        "leads",
+        "attended",
+        "ALTER TABLE `leads` ADD COLUMN `attended` TINYINT(1) NULL "
+        "COMMENT 'Presenca confirmada via QR Code no evento' "
+        "AFTER `event_notes`",
+    ),
+]
+
+
+# ── Migração de ENUMs ──────────────────────────────────────────────────────
+# Lista de (tabela, coluna, valor_esperado, ALTER_DDL_completo)
+ALTER_ENUMS: list[tuple[str, str, str, str]] = [
+    (
+        "message_templates",
+        "phase",
+        "post_event_attended",
+        "ALTER TABLE `message_templates` MODIFY COLUMN `phase` "
+        "ENUM('pre_event', 'confirmation', 'post_event', "
+        "'post_event_attended', 'post_event_no_show', 'reply') NOT NULL",
+    ),    (
+        "message_templates",
+        "channel",
+        "EMAIL",
+        "ALTER TABLE `message_templates` MODIFY COLUMN `channel` "
+        "ENUM('EMAIL', 'WHATSAPP', 'BOTH') NOT NULL",
+    ),
+    (
+        "events",
+        "status",
+        "ACTIVE",
+        "ALTER TABLE `events` MODIFY COLUMN `status` "
+        "ENUM('DRAFT', 'ACTIVE', 'ENDED') NOT NULL DEFAULT 'ACTIVE'",
+    ),]
 
 
 # ── 1. Teste de Conexão ───────────────────────────────────────────────────────
@@ -263,7 +318,99 @@ async def check_and_create_tables() -> bool:
     return all_ok
 
 
-# ── Runner Principal ──────────────────────────────────────────────────────────
+# ── 3. Migração de Colunas Novas ──────────────────────────────────────────────
+
+async def migrate_columns() -> bool:
+    """Adiciona colunas que possam ter sido incluidas apos a criacao inicial do banco."""
+    print("\n" + "=" * 60)
+    print("  VERIFICACAO 3 — Migração de Colunas Novas")
+    print("=" * 60)
+
+    all_ok = True
+    try:
+        conn = await aiomysql.connect(
+            host=DB_PARAMS["host"],
+            port=DB_PARAMS["port"],
+            user=DB_PARAMS["user"],
+            password=DB_PARAMS["password"],
+            db=DB_PARAMS["db"],
+            connect_timeout=5,
+        )
+
+        for table_name, col_name, ddl in ALTER_COLUMNS:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT COUNT(*) FROM information_schema.columns "
+                    "WHERE table_schema = %s AND table_name = %s AND column_name = %s",
+                    (DB_PARAMS["db"], table_name, col_name),
+                )
+                exists = (await cur.fetchone())[0] > 0
+
+                if exists:
+                    print(f"  OK  `{table_name}`.`{col_name}` já existe")
+                else:
+                    print(f"  AVISO  `{table_name}`.`{col_name}` não existe. Adicionando...")
+                    await cur.execute(ddl)
+                    await conn.commit()
+                    print(f"  OK  `{table_name}`.`{col_name}` adicionada com sucesso!")
+
+        conn.close()
+
+    except Exception as e:
+        print(f"\n  ERRO: {type(e).__name__}: {e}")
+        return False
+
+    return all_ok
+
+
+# ── 4. Migração de ENUMs ──────────────────────────────────────────────────────
+
+async def migrate_enums() -> bool:
+    """Expande ENUMs que precisem de novos valores em bancos já existentes."""
+    print("\n" + "=" * 60)
+    print("  VERIFICACAO 4 — Migração de ENUMs")
+    print("=" * 60)
+
+    all_ok = True
+    try:
+        conn = await aiomysql.connect(
+            host=DB_PARAMS["host"],
+            port=DB_PARAMS["port"],
+            user=DB_PARAMS["user"],
+            password=DB_PARAMS["password"],
+            db=DB_PARAMS["db"],
+            connect_timeout=5,
+        )
+
+        for table_name, col_name, expected_value, ddl in ALTER_ENUMS:
+            async with conn.cursor() as cur:
+                # Verifica se o valor já existe na definição do ENUM
+                await cur.execute(
+                    "SELECT COLUMN_TYPE FROM information_schema.columns "
+                    "WHERE table_schema = %s AND table_name = %s AND column_name = %s",
+                    (DB_PARAMS["db"], table_name, col_name),
+                )
+                row = await cur.fetchone()
+                if not row:
+                    print(f"  AVISO  `{table_name}`.`{col_name}` não encontrada — pulando")
+                    continue
+
+                col_type = row[0]
+                if expected_value in col_type:
+                    print(f"  OK  `{table_name}`.`{col_name}` já contém '{expected_value}'")
+                else:
+                    print(f"  AVISO  `{table_name}`.`{col_name}` desatualizado. Expandindo ENUM...")
+                    await cur.execute(ddl)
+                    await conn.commit()
+                    print(f"  OK  ENUM expandido com sucesso!")
+
+        conn.close()
+
+    except Exception as e:
+        print(f"\n  ERRO: {type(e).__name__}: {e}")
+        return False
+
+    return all_ok
 
 async def main(check_only: bool = False) -> int:
     print()
@@ -280,18 +427,20 @@ async def main(check_only: bool = False) -> int:
         print("\nOK: Verificacao de conexao concluida (--check-only).\n")
         return 0
 
-    tables_ok = await check_and_create_tables()
+    tables_ok  = await check_and_create_tables()
+    columns_ok = await migrate_columns()
+    enums_ok   = await migrate_enums()
 
     print()
     print("=" * 60)
-    if tables_ok:
+    if tables_ok and columns_ok and enums_ok:
         print("  OK: Todas as verificacoes passaram! Sistema pronto.")
     else:
         print("  ERRO: Uma ou mais verificacoes falharam.")
     print("=" * 60)
     print()
 
-    return 0 if tables_ok else 1
+    return 0 if (tables_ok and columns_ok and enums_ok) else 1
 
 
 if __name__ == "__main__":

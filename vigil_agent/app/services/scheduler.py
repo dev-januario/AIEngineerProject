@@ -71,7 +71,10 @@ def stop_scheduler():
 async def _dispatch_post_event_sequence():
     """
     Job executado após encerramento do evento.
-    Busca todos os leads confirmados/presentes e dispara a régua pós-evento.
+    Envia mensagens personalizadas com base na presença do lead:
+      - attended=True  → templates POST_EVENT_ATTENDED (agradecimento)
+      - attended!=True → templates POST_EVENT_NO_SHOW  (conforto / sentimos sua falta)
+      - fallback       → templates POST_EVENT genéricos
     """
     from app.db.session import AsyncSessionLocal
     from app.models.lead import Lead, FunnelPhase, LeadStatus
@@ -83,17 +86,15 @@ async def _dispatch_post_event_sequence():
     )
     from sqlalchemy import select
 
-    logger.info("🔔 [Scheduler] Disparando régua pós-evento...")
+    logger.info("🔔 [Scheduler] Disparando régua pós-evento personalizada...")
 
     async with AsyncSessionLocal() as db:
-        # Busca evento ativo/encerrado
+        # Busca evento encerrado (ou ativo como fallback)
         event_result = await db.execute(
             select(Event).where(Event.status == EventStatus.ENDED).order_by(Event.ended_at.desc())
         )
         event = event_result.scalar_one_or_none()
-
         if not event:
-            # Tenta evento ativo
             event_result = await db.execute(select(Event).order_by(Event.id.desc()))
             event = event_result.scalar_one_or_none()
 
@@ -105,36 +106,54 @@ async def _dispatch_post_event_sequence():
             "speakers": event.speakers if event else [],
         } if event else {}
 
-        # Busca templates pós-evento ativos
-        templates_result = await db.execute(
+        # Carrega todos os templates pós-evento de uma só vez
+        tpl_result = await db.execute(
             select(MessageTemplate).where(
-                MessageTemplate.phase == TemplatePhase.POST_EVENT,
+                MessageTemplate.phase.in_([
+                    TemplatePhase.POST_EVENT,
+                    TemplatePhase.POST_EVENT_ATTENDED,
+                    TemplatePhase.POST_EVENT_NO_SHOW,
+                ]),
                 MessageTemplate.is_active == True,
             ).order_by(MessageTemplate.sequence_order)
         )
-        templates = templates_result.scalars().all()
+        all_templates = tpl_result.scalars().all()
 
-        if not templates:
+        attended_tpls = [t for t in all_templates if t.phase == TemplatePhase.POST_EVENT_ATTENDED][:1]
+        no_show_tpls  = [t for t in all_templates if t.phase == TemplatePhase.POST_EVENT_NO_SHOW][:1]
+        generic_tpls  = [t for t in all_templates if t.phase == TemplatePhase.POST_EVENT][:1]
+
+        if not all_templates:
             logger.warning("[Scheduler] Nenhum template pós-evento encontrado")
             return
 
-        # Busca leads que passaram pela fase de pré-evento
+        # Busca todos os leads não-fechados
         leads_result = await db.execute(
             select(Lead).where(
-                Lead.funnel_phase.in_([FunnelPhase.PRE_EVENT, FunnelPhase.POST_EVENT, FunnelPhase.CAPTURE, FunnelPhase.ENRICHMENT])
+                Lead.funnel_phase.in_([
+                    FunnelPhase.PRE_EVENT, FunnelPhase.POST_EVENT,
+                    FunnelPhase.CAPTURE, FunnelPhase.ENRICHMENT,
+                ])
             )
         )
         leads = leads_result.scalars().all()
-
-        logger.info(f"[Scheduler] Disparando pós-evento para {len(leads)} leads")
+        logger.info(f"[Scheduler] Pós-evento para {len(leads)} leads")
 
         for lead in leads:
             try:
-                lead_dict = {
-                    "name": lead.name,
-                    "role": lead.role,
-                    "company": lead.company,
-                }
+                # Seleciona templates conforme presença confirmada via QR Code
+                if lead.attended is True:
+                    templates = attended_tpls or generic_tpls
+                    persona = "presente"
+                else:
+                    templates = no_show_tpls or generic_tpls
+                    persona = "ausente"
+
+                if not templates:
+                    logger.warning(f"[Scheduler] Nenhum template para lead_id={lead.id} ({persona})")
+                    continue
+
+                lead_dict = {"name": lead.name, "role": lead.role, "company": lead.company}
                 vars_ = build_template_vars(lead_dict, event_dict)
 
                 for tpl in templates:
@@ -144,45 +163,34 @@ async def _dispatch_post_event_sequence():
                         if lead.email:
                             subject = render_template_vars(tpl.subject or "Vigil Summit — Follow-up", vars_)
                             result = await send_email(
-                                email=lead.email,
-                                subject=subject,
-                                body=rendered_body,
-                                lead_id=lead.id,
-                                template_name=tpl.name,
+                                email=lead.email, subject=subject,
+                                body=rendered_body, lead_id=lead.id, template_name=tpl.name,
                             )
-                            log_entry = {
-                                **result,
-                                "channel": "email",
-                                "template": tpl.name,
+                            lead.communication_log = (lead.communication_log or []) + [{
+                                **result, "channel": "email", "template": tpl.name,
                                 "sent_at": datetime.now(timezone.utc).isoformat(),
-                            }
-                            lead.communication_log = (lead.communication_log or []) + [log_entry]
+                            }]
 
                     if tpl.channel in (TemplateChannel.WHATSAPP, TemplateChannel.BOTH):
                         if lead.phone:
                             result = await send_whatsapp(
-                                phone=lead.phone,
-                                message=rendered_body,
-                                lead_id=lead.id,
-                                template_name=tpl.name,
+                                phone=lead.phone, message=rendered_body,
+                                lead_id=lead.id, template_name=tpl.name,
                             )
-                            log_entry = {
-                                **result,
-                                "channel": "whatsapp",
-                                "template": tpl.name,
+                            lead.communication_log = (lead.communication_log or []) + [{
+                                **result, "channel": "whatsapp", "template": tpl.name,
                                 "sent_at": datetime.now(timezone.utc).isoformat(),
-                            }
-                            lead.communication_log = (lead.communication_log or []) + [log_entry]
+                            }]
 
-                # Avança fase do funil
                 lead.funnel_phase = FunnelPhase.POST_EVENT
                 lead.last_contacted_at = datetime.now(timezone.utc)
+                logger.info(f"[Scheduler] Pós-evento — lead_id={lead.id} | presença={persona}")
 
             except Exception as e:
-                logger.error(f"[Scheduler] Erro ao disparar pós-evento para lead_id={lead.id}: {e}")
+                logger.error(f"[Scheduler] Erro pós-evento lead_id={lead.id}: {e}")
 
         await db.commit()
-        logger.info("✅ [Scheduler] Régua pós-evento disparada com sucesso")
+        logger.info("✅ [Scheduler] Régua pós-evento personalizada concluída")
 
 
 def schedule_post_event(delay_minutes: int = 3, run_at: datetime | None = None):

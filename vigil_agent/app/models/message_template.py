@@ -28,13 +28,15 @@ class TemplatePhase(str, enum.Enum):
     PRE_EVENT = "pre_event"
     CONFIRMATION = "confirmation"
     POST_EVENT = "post_event"
+    POST_EVENT_ATTENDED = "post_event_attended"   # lead esteve presente → agradecimento
+    POST_EVENT_NO_SHOW  = "post_event_no_show"    # lead não foi → mensagem de conforto
     REPLY = "reply"
 
 
 class TemplateChannel(str, enum.Enum):
-    EMAIL = "email"
-    WHATSAPP = "whatsapp"
-    BOTH = "both"
+    EMAIL = "EMAIL"
+    WHATSAPP = "WHATSAPP"
+    BOTH = "BOTH"
 
 
 class MessageTemplate(Base):
@@ -45,10 +47,12 @@ class MessageTemplate(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     phase: Mapped[TemplatePhase] = mapped_column(
-        Enum(TemplatePhase, name="templatephase"), nullable=False, index=True
+        Enum(TemplatePhase, name="templatephase", values_callable=lambda x: [e.value for e in x]),
+        nullable=False, index=True,
     )
     channel: Mapped[TemplateChannel] = mapped_column(
-        Enum(TemplateChannel, name="templatechannel"), nullable=False
+        Enum(TemplateChannel, name="templatechannel", values_callable=lambda x: [e.value for e in x]),
+        nullable=False,
     )
 
     # Assunto (usado só em email)

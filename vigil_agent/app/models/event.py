@@ -15,9 +15,9 @@ from app.db.base import Base
 
 
 class EventStatus(str, enum.Enum):
-    DRAFT = "draft"
-    ACTIVE = "active"
-    ENDED = "ended"
+    DRAFT = "DRAFT"
+    ACTIVE = "ACTIVE"
+    ENDED = "ENDED"
 
 
 class Event(Base):
@@ -43,7 +43,7 @@ class Event(Base):
     post_event_delay_minutes: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
 
     status: Mapped[EventStatus] = mapped_column(
-        Enum(EventStatus, name="eventstatus"),
+        Enum(EventStatus, name="eventstatus", values_callable=lambda x: [e.value for e in x]),
         default=EventStatus.ACTIVE,
         nullable=False,
         index=True,

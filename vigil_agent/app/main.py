@@ -83,11 +83,20 @@ async def _seed_initial_data(db_conn):
             db.add(event)
             logger.info("✅ Evento padrão criado")
 
-        # Templates iniciais
-        result = await db.execute(__import__("sqlalchemy", fromlist=["select"]).select(MessageTemplate))
-        if not result.scalars().all():
-            templates = [
-                MessageTemplate(
+        # Templates iniciais — aditivo: verifica cada fase individualmente
+        from sqlalchemy import select as _select
+
+        async def _phase_exists(phase: TemplatePhase) -> bool:
+            r = await db.execute(
+                _select(MessageTemplate.id)
+                .where(MessageTemplate.phase == phase)
+                .limit(1)
+            )
+            return r.scalar_one_or_none() is not None
+
+        if True:  # sempre verifica; só adiciona o que falta
+            seed_map = {
+                TemplatePhase.CONFIRMATION: MessageTemplate(
                     name="Confirmação de Inscrição",
                     phase=TemplatePhase.CONFIRMATION,
                     channel=TemplateChannel.BOTH,
@@ -106,7 +115,44 @@ async def _seed_initial_data(db_conn):
                     sequence_order=1,
                     is_active=True,
                 ),
-                MessageTemplate(
+                TemplatePhase.POST_EVENT_ATTENDED: MessageTemplate(
+                    name="Pós-Evento — Presente (Agradecimento)",
+                    phase=TemplatePhase.POST_EVENT_ATTENDED,
+                    channel=TemplateChannel.BOTH,
+                    subject="Foi um prazer ter você no {{NOME_EVENTO}}, {{PRIMEIRO_NOME}}! 🌟",
+                    body=(
+                        "{{PRIMEIRO_NOME}}, muito obrigado por estar com a gente no {{NOME_EVENTO}}! 👏❤️‍🔥\n\n"
+                        "Foi incrível trocar experiências com profissionais como você, que "
+                        "estão na linha de frente da segurança em {{EMPRESA}}.\n\n"
+                        "Gostaríamos de continuar essa conversa. Que tal uma reunião de 30 minutos "
+                        "para explorar como a Vigil.AI pode apoiar os desafios que debatemos no evento?\n\n"
+                        "📅 Agende aqui: [LINK_CALENDÁRIO]\n\n"
+                        "Abraço,\n"
+                        "Equipe Vigil.AI"
+                    ),
+                    sequence_order=1,
+                    is_active=True,
+                ),
+                TemplatePhase.POST_EVENT_NO_SHOW: MessageTemplate(
+                    name="Pós-Evento — Ausente (Conforto)",
+                    phase=TemplatePhase.POST_EVENT_NO_SHOW,
+                    channel=TemplateChannel.BOTH,
+                    subject="Sentimos sua falta no {{NOME_EVENTO}}, {{PRIMEIRO_NOME}}",
+                    body=(
+                        "{{PRIMEIRO_NOME}}, sentimos muito a sua ausência no {{NOME_EVENTO}}. 🙏\n\n"
+                        "Sabemos que a agenda de {{CARGO}} na {{EMPRESA}} é corrida e imprevistos acontecem.\n\n"
+                        "Os temas debatidos foram muito relevantes e gostaríamos de compartilhar "
+                        "os principais insights com você. Posso te enviar o resumo do evento?\n\n"
+                        "E se quiser conversar sobre como a Vigil.AI pode ajudar a sua empresa, "
+                        "estamos disponíveis para uma breve conversa quando preferir.\n\n"
+                        "📅 Agende um horário: [LINK_CALENDÁRIO]\n\n"
+                        "Abraço,\n"
+                        "Equipe Vigil.AI"
+                    ),
+                    sequence_order=1,
+                    is_active=True,
+                ),
+                TemplatePhase.POST_EVENT: MessageTemplate(
                     name="Follow-up Pós-Evento — Agendamento",
                     phase=TemplatePhase.POST_EVENT,
                     channel=TemplateChannel.BOTH,
@@ -124,7 +170,7 @@ async def _seed_initial_data(db_conn):
                     sequence_order=1,
                     is_active=True,
                 ),
-                MessageTemplate(
+                TemplatePhase.PRE_EVENT: MessageTemplate(
                     name="Pré-Evento — Lembrete",
                     phase=TemplatePhase.PRE_EVENT,
                     channel=TemplateChannel.WHATSAPP,
@@ -139,10 +185,14 @@ async def _seed_initial_data(db_conn):
                     sequence_order=1,
                     is_active=True,
                 ),
-            ]
-            for tpl in templates:
-                db.add(tpl)
-            logger.info(f"✅ {len(templates)} templates iniciais criados")
+            }
+            added = 0
+            for phase, tpl in seed_map.items():
+                if not await _phase_exists(phase):
+                    db.add(tpl)
+                    added += 1
+            if added:
+                logger.info(f"✅ {added} template(s) adicionado(s) ao seed")
 
         await db.commit()
 
