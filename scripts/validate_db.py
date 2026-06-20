@@ -95,6 +95,8 @@ CREATE TABLE IF NOT EXISTS leads (
     with_companion  TINYINT(1)      NOT NULL DEFAULT 0,
     companion_email         VARCHAR(255)    NULL     COMMENT 'Email do acompanhante; recebe convite para preencher o formulario',
     companion_relationship  VARCHAR(50)     NULL     COMMENT 'Vinculo: colleague | friend | spouse | child | other',
+    is_companion            TINYINT(1)      NOT NULL DEFAULT 0 COMMENT 'True quando este lead e um acompanhante criado a partir de outro lead',
+    companion_of_lead_id    INT             NULL     COMMENT 'ID do lead principal que gerou este acompanhante',
     lgpd_consent    TINYINT(1)      NOT NULL DEFAULT 0,
     consent_at      DATETIME        NULL,
     created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -118,6 +120,8 @@ CREATE TABLE IF NOT EXISTS events (
     description                 TEXT            NULL,
     speakers                    JSON            NULL     COMMENT 'Lista de palestrantes',
     post_event_delay_minutes    INT             NOT NULL DEFAULT 3,
+    pre_event_reminder_days     JSON            NULL     COMMENT 'Dias antes do evento para disparar lembretes ex.: [30,15,7,3,1]',
+    pre_event_send_time         VARCHAR(5)      NOT NULL DEFAULT '09:00' COMMENT 'Horario de disparo diario HH:MM',
     status                      ENUM('DRAFT', 'ACTIVE', 'ENDED') NOT NULL DEFAULT 'ACTIVE',
     scheduled_end_at            DATETIME        NULL,
     ended_at                    DATETIME        NULL,
@@ -131,19 +135,31 @@ CREATE TABLE IF NOT EXISTS events (
 
 TABLES.append(("message_templates", """
 CREATE TABLE IF NOT EXISTS message_templates (
-    id              INT             NOT NULL AUTO_INCREMENT,
-    name            VARCHAR(255)    NOT NULL,
-    phase           ENUM('pre_event', 'confirmation', 'post_event', 'post_event_attended', 'post_event_no_show', 'reply') NOT NULL,
-    channel         ENUM('EMAIL', 'WHATSAPP', 'BOTH') NOT NULL,
-    subject         VARCHAR(500)    NULL,
-    body            TEXT            NOT NULL,
-    sequence_order  INT             NOT NULL DEFAULT 1,
-    is_active       TINYINT(1)      NOT NULL DEFAULT 1,
-    created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    id                  INT             NOT NULL AUTO_INCREMENT,
+    name                VARCHAR(255)    NOT NULL,
+    phase               ENUM(
+                            'pre_event',
+                            'pre_event_participant',
+                            'pre_event_with_companion',
+                            'pre_event_companion_pending',
+                            'confirmation',
+                            'post_event',
+                            'post_event_attended',
+                            'post_event_no_show',
+                            'reply'
+                        ) NOT NULL,
+    channel             ENUM('EMAIL', 'WHATSAPP', 'BOTH') NOT NULL,
+    subject             VARCHAR(500)    NULL,
+    body                TEXT            NOT NULL,
+    sequence_order      INT             NOT NULL DEFAULT 1,
+    days_before_event   INT             NULL     COMMENT 'Dias antes do evento para disparar (NULL = sem restricao de data)',
+    is_active           TINYINT(1)      NOT NULL DEFAULT 1,
+    created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
-    INDEX idx_phase  (phase),
-    INDEX idx_active (is_active)
+    INDEX idx_phase             (phase),
+    INDEX idx_days_before_event (days_before_event),
+    INDEX idx_active            (is_active)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   COMMENT='Templates de mensagem editaveis pelo painel administrativo';
 """))
@@ -188,6 +204,44 @@ ALTER_COLUMNS: list[tuple[str, str, str]] = [
         "COMMENT 'Presenca confirmada via QR Code no evento' "
         "AFTER `event_notes`",
     ),
+    # ── Colunas novas da régua pré-evento (adicionadas na conversa 8003e425) ──
+    (
+        "events",
+        "pre_event_reminder_days",
+        "ALTER TABLE `events` ADD COLUMN `pre_event_reminder_days` JSON NULL "
+        "COMMENT 'Dias antes do evento para disparar lembretes ex.: [30,15,7,3,1]' "
+        "AFTER `post_event_delay_minutes`",
+    ),
+    (
+        "events",
+        "pre_event_send_time",
+        "ALTER TABLE `events` ADD COLUMN `pre_event_send_time` VARCHAR(5) NOT NULL DEFAULT '09:00' "
+        "COMMENT 'Horario de disparo diario HH:MM' "
+        "AFTER `pre_event_reminder_days`",
+    ),
+    # ── Colunas novas em message_templates ────────────────────────────────────
+    (
+        "message_templates",
+        "days_before_event",
+        "ALTER TABLE `message_templates` ADD COLUMN `days_before_event` INT NULL "
+        "COMMENT 'Dias antes do evento para disparar (NULL = sem restricao de data)' "
+        "AFTER `sequence_order`",
+    ),
+    # ── Colunas de acompanhante ───────────────────────────────────────────────
+    (
+        "leads",
+        "is_companion",
+        "ALTER TABLE `leads` ADD COLUMN `is_companion` TINYINT(1) NOT NULL DEFAULT 0 "
+        "COMMENT 'True quando este lead e um acompanhante criado a partir de outro lead' "
+        "AFTER `companion_relationship`",
+    ),
+    (
+        "leads",
+        "companion_of_lead_id",
+        "ALTER TABLE `leads` ADD COLUMN `companion_of_lead_id` INT NULL "
+        "COMMENT 'ID do lead principal que gerou este acompanhante' "
+        "AFTER `is_companion`",
+    ),
 ]
 
 
@@ -197,11 +251,13 @@ ALTER_ENUMS: list[tuple[str, str, str, str]] = [
     (
         "message_templates",
         "phase",
-        "post_event_attended",
+        "pre_event_participant",          # valor sentinela: se não existe, o ENUM está desatualizado
         "ALTER TABLE `message_templates` MODIFY COLUMN `phase` "
-        "ENUM('pre_event', 'confirmation', 'post_event', "
-        "'post_event_attended', 'post_event_no_show', 'reply') NOT NULL",
-    ),    (
+        "ENUM('pre_event','pre_event_participant','pre_event_with_companion',"
+        "'pre_event_companion_pending','confirmation','post_event',"
+        "'post_event_attended','post_event_no_show','reply') NOT NULL",
+    ),
+    (
         "message_templates",
         "channel",
         "EMAIL",
@@ -214,7 +270,25 @@ ALTER_ENUMS: list[tuple[str, str, str, str]] = [
         "ACTIVE",
         "ALTER TABLE `events` MODIFY COLUMN `status` "
         "ENUM('DRAFT', 'ACTIVE', 'ENDED') NOT NULL DEFAULT 'ACTIVE'",
-    ),]
+    ),
+    # ── Novos status e phases adicionados na implementação de qualificação ──
+    (
+        "leads",
+        "status",
+        "pending_review",
+        "ALTER TABLE `leads` MODIFY COLUMN `status` "
+        "ENUM('new','enriched','contacted','confirmed','declined',"
+        "'no_response','attended','no_show','followed_up',"
+        "'meeting_booked','out_of_icp','pending_review') NOT NULL DEFAULT 'new'",
+    ),
+    (
+        "leads",
+        "funnel_phase",
+        "companion_pending",
+        "ALTER TABLE `leads` MODIFY COLUMN `funnel_phase` "
+        "ENUM('capture','enrichment','pre_event','companion_pending','post_event','closed') NOT NULL DEFAULT 'capture'",
+    ),
+]
 
 
 # ── 1. Teste de Conexão ───────────────────────────────────────────────────────

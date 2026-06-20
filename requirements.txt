@@ -10,8 +10,8 @@ PyMySQL==1.1.1
 
 # AI / LangGraph
 langgraph==0.2.55
-langchain-anthropic==0.3.0
-anthropic==0.40.0
+google-generativeai==0.8.3
+langchain-google-genai==2.0.7
 langchain-core==0.3.25
 
 # Validation & Settings
