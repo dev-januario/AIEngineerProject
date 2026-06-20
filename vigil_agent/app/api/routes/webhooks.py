@@ -41,13 +41,20 @@ async def _process_and_reply(
       2. Passa a mensagem pelo agente de IA (node_process_response)
       3. Envia a resposta gerada pela IA de volta pelo mesmo canal
     """
+    logger.info(f"[Webhook/Debug] 📥 Inbound recebido")
+    logger.info(f"  Canal: {reply_channel} | Email: {lead_email} | Phone: {phone or 'N/A'}")
+    logger.info(f"  Mensagem ({len(message)} chars): {message[:120]!r}")
+
     try:
         async with AsyncSessionLocal() as db:
             result = await db.execute(select(Lead).where(Lead.email == lead_email))
             lead = result.scalar_one_or_none()
             if not lead:
-                logger.warning(f"[Webhook] Lead não encontrado para email: {lead_email}")
+                logger.warning(f"[Webhook/Debug] ❌ Lead NÃO encontrado para email: {lead_email}")
+                logger.warning(f"  ↳ Tip: verifique se o email do lead no banco corresponde exatamente ao remetente")
                 return
+
+            logger.info(f"[Webhook/Debug] ✅ Lead encontrado: id={lead.id} | status={lead.status} | phase={lead.funnel_phase}")
 
             lead_dict = {
                 "id": lead.id,
@@ -106,8 +113,8 @@ async def _process_and_reply(
                 await db.commit()
 
                 logger.info(
-                    f"[Webhook] Inbound processado lead_id={lead.id} | "
-                    f"status: {lead.status} | ação: {final_state.get('last_action')}"
+                    f"[Webhook/Debug] 🤖 IA processou resposta | lead_id={lead.id} | "
+                    f"novo status: {lead.status} | ação: {final_state.get('last_action', '')[:80]}"
                 )
 
                 # O node_process_response já envia a resposta internamente por email.
@@ -117,6 +124,7 @@ async def _process_and_reply(
                     if comm_log:
                         ai_reply = comm_log[-1].get("message_preview", "")
                         if ai_reply:
+                            logger.info(f"[Webhook/Debug] 📱 Enviando resposta via WhatsApp para {lead.phone[:6]}***")
                             await notify_lead(
                                 lead_id=lead.id,
                                 channel=NC.WHATSAPP,

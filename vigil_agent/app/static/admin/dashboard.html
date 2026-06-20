@@ -193,28 +193,23 @@
       <!-- ── Templates Panel ── -->
       <div class="content-panel" id="panel-templates">
         <div class="panel-header">
-          <h1>✉️ Templates de Mensagem</h1>
-          <p>Crie e edite as mensagens enviadas automaticamente para os participantes</p>
+          <h1>🧠 Prompts de IA</h1>
+          <p>Edite as instruções que guiam o Gemini ao gerar mensagens personalizadas para cada lead</p>
         </div>
 
         <div class="section-card">
           <div class="templates-header">
-            <h2 style="margin-bottom:0">Templates Ativos</h2>
-            <button class="btn-outline" onclick="openTemplateModal()">+ Novo Template</button>
+            <h2 style="margin-bottom:0">Prompts Ativos</h2>
+            <button class="btn-outline" onclick="openTemplateModal()">+ Novo Prompt</button>
           </div>
-          <p style="font-size:0.78rem;color:var(--text-muted);margin:0.5rem 0 1rem">
-            Variáveis disponíveis: <code style="color:var(--purple-glow)">{{NOME}}</code> <code
-              style="color:var(--purple-glow)">{{PRIMEIRO_NOME}}</code> <code
-              style="color:var(--purple-glow)">{{CARGO}}</code> <code
-              style="color:var(--purple-glow)">{{EMPRESA}}</code> <code
-              style="color:var(--purple-glow)">{{DATA_EVENTO}}</code> <code
-              style="color:var(--purple-glow)">{{HORA_EVENTO}}</code> <code
-              style="color:var(--purple-glow)">{{LOCAL_EVENTO}}</code> <code
-              style="color:var(--purple-glow)">{{NOME_EVENTO}}</code> <code
-              style="color:var(--purple-glow)">{{PALESTRANTES}}</code>
-          </p>
+          <div style="background:rgba(124,111,247,0.08);border:1px solid rgba(124,111,247,0.25);border-radius:8px;padding:0.75rem 1rem;margin:0.75rem 0 1rem;font-size:0.8rem;color:#a5b4fc;line-height:1.6">
+            <strong style="color:#c4b5fd;display:block;margin-bottom:0.3rem">💡 Como funciona:</strong>
+            O campo <strong>"Instrução"</strong> de cada prompt é o <em>system prompt</em> enviado ao Gemini.
+            Edite as regras aqui e o Gemini seguirá automaticamente nas próximas mensagens.
+            Não é necessário alterar o código.
+          </div>
           <div id="templates-list">
-            <div style="color:var(--text-muted);font-size:0.88rem">Carregando templates...</div>
+            <div style="color:var(--text-muted);font-size:0.88rem">Carregando prompts...</div>
           </div>
         </div>
       </div>
@@ -316,11 +311,12 @@
           <div>
             <label>Fase</label>
             <select id="tpl-phase">
-              <option value="confirmation">Confirmação de Inscrição</option>
-              <option value="pre_event">Pré-evento</option>
+              <option value="confirmation">Confirmação de Inscrição (aprovado)</option>
+              <option value="pre_event">Pré-evento (convite e follow-up)</option>
               <option value="post_event">Pós-evento (genérico)</option>
               <option value="post_event_attended">Pós-evento — Presente (agradecimento)</option>
               <option value="post_event_no_show">Pós-evento — Ausente (conforto)</option>
+              <option value="reply">Resposta Inbound (processamento)</option>
             </select>
           </div>
         </div>
@@ -328,9 +324,9 @@
           <div>
             <label>Canal</label>
             <select id="tpl-channel">
-              <option value="both">Email + WhatsApp</option>
-              <option value="email">Somente Email</option>
-              <option value="whatsapp">Somente WhatsApp</option>
+              <option value="BOTH">Email + WhatsApp</option>
+              <option value="EMAIL">Somente Email</option>
+              <option value="WHATSAPP">Somente WhatsApp</option>
             </select>
           </div>
           <div>
@@ -346,14 +342,14 @@
         </div>
         <div class="form-row single">
           <div>
-            <label>Corpo da Mensagem</label>
-            <textarea id="tpl-body" rows="8" placeholder="Olá, {{PRIMEIRO_NOME}}! ..."></textarea>
+            <label>Instrução para a IA <span style="color:var(--purple-glow);font-weight:400;font-size:0.75rem">(System Prompt — o Gemini seguirá estas regras ao gerar a mensagem)</span></label>
+            <textarea id="tpl-body" rows="10"
+              placeholder="Seu trabalho é gerar uma mensagem de [tipo] para este lead.&#10;&#10;REGRAS OBRIGATÓRIAS:&#10;- Comece pelo primeiro nome&#10;- Tom: profissional e consultivo&#10;- Extensão: 200-300 palavras"></textarea>
           </div>
         </div>
-        <label style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;cursor:pointer">
+        <label style="display:inline-flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;cursor:pointer">
           <input type="checkbox" id="tpl-active" checked />
-          <span style="font-size:0.82rem;color:var(--text-secondary);text-transform:none;letter-spacing:0">Template
-            ativo</span>
+          <span style="font-size:0.82rem;color:var(--text-secondary);text-transform:none;letter-spacing:0;white-space:nowrap">Template ativo</span>
         </label>
       </form>
       <div class="modal-actions">
@@ -366,7 +362,7 @@
   <!-- Toast -->
   <div class="toast hidden" id="toast"></div>
 
-  <script src="/admin/admin.js"></script>
+  <script src="/admin/admin.js?v=4"></script>
 </body>
 
 </html>

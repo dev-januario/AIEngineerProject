@@ -44,7 +44,14 @@ async function api(method, path, body = null) {
   if (res.status === 401) { logout(); return null; }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `Erro ${res.status}`);
+    // detail pode ser string ou array de ValidationError do Pydantic
+    let detail = err.detail;
+    if (Array.isArray(detail)) {
+      detail = detail.map(e => `${e.loc?.slice(-1)[0] || ''}: ${e.msg}`).join(' | ');
+    } else if (typeof detail === 'object' && detail !== null) {
+      detail = JSON.stringify(detail);
+    }
+    throw new Error(detail || `Erro ${res.status}`);
   }
   return res.status === 204 ? null : res.json();
 }
@@ -233,22 +240,31 @@ async function loadTemplates() {
 function renderTemplates(templates) {
   const listEl = document.getElementById('templates-list');
   if (!templates.length) {
-    listEl.innerHTML = '<p style="color:var(--text-muted);font-size:0.88rem">Nenhum template criado.</p>';
+    listEl.innerHTML = '<p style="color:var(--text-muted);font-size:0.88rem">Nenhum prompt criado.</p>';
     return;
   }
 
-  const phaseTag = { pre_event: 'tag-pre', post_event: 'tag-post', confirmation: 'tag-confirm', reply: 'tag-pre', post_event_attended: 'tag-post', post_event_no_show: 'tag-pre' };
-  const phaseLabel = { pre_event: 'Pré-evento', post_event: 'Pós-evento', confirmation: 'Confirmação', reply: 'Reply', post_event_attended: 'Pós — Presente', post_event_no_show: 'Pós — Ausente' };
-  const channelTag = { email: 'tag-email', whatsapp: 'tag-whatsapp', both: 'tag-both' };
-  const channelLabel = { email: 'Email', whatsapp: 'WhatsApp', both: 'Email+WA' };
+  const phaseTag = {
+    pre_event: 'tag-pre', post_event: 'tag-post', confirmation: 'tag-confirm',
+    reply: 'tag-pre', post_event_attended: 'tag-post', post_event_no_show: 'tag-pre',
+    pre_event_participant: 'tag-pre', pre_event_with_companion: 'tag-pre', pre_event_companion_pending: 'tag-pre',
+  };
+  const phaseLabel = {
+    pre_event: 'Pré-evento', post_event: 'Pós-evento', confirmation: 'Confirmação',
+    reply: 'Reply / Inbound', post_event_attended: 'Pós — Presente', post_event_no_show: 'Pós — Ausente',
+    pre_event_participant: 'Pré — Participante', pre_event_with_companion: 'Pré — c/ Acomp.', pre_event_companion_pending: 'Pré — Acomp. Pendente',
+  };
+  // Suporta BOTH/EMAIL/WHATSAPP (maiúsculas do backend) e versões minúsculas (legado)
+  const channelTag = { email: 'tag-email', EMAIL: 'tag-email', whatsapp: 'tag-whatsapp', WHATSAPP: 'tag-whatsapp', both: 'tag-both', BOTH: 'tag-both' };
+  const channelLabel = { email: 'Email', EMAIL: 'Email', whatsapp: 'WhatsApp', WHATSAPP: 'WhatsApp', both: 'Email+WA', BOTH: 'Email+WA' };
 
   listEl.innerHTML = templates.map(t => `
     <div class="template-item">
       <div class="template-info">
         <div class="template-name">${t.name}</div>
         <div class="template-meta">
-          <span class="tag ${phaseTag[t.phase]}">${phaseLabel[t.phase]}</span>
-          <span class="tag ${channelTag[t.channel]}">${channelLabel[t.channel]}</span>
+          <span class="tag ${phaseTag[t.phase] || 'tag-pre'}">${phaseLabel[t.phase] || t.phase}</span>
+          <span class="tag ${channelTag[t.channel] || 'tag-both'}">${channelLabel[t.channel] || t.channel}</span>
           ${!t.is_active ? '<span class="tag tag-inactive">Inativo</span>' : ''}
         </div>
       </div>
@@ -261,17 +277,20 @@ function renderTemplates(templates) {
 }
 
 function openTemplateModal(tpl = null) {
-  document.getElementById('modal-title').textContent = tpl ? 'Editar Template' : 'Novo Template';
+  document.getElementById('modal-title').textContent = tpl ? 'Editar Prompt de IA' : 'Novo Prompt de IA';
   document.getElementById('tpl-id').value = tpl?.id || '';
   document.getElementById('tpl-name').value = tpl?.name || '';
   document.getElementById('tpl-phase').value = tpl?.phase || 'confirmation';
-  document.getElementById('tpl-channel').value = tpl?.channel || 'both';
+  // Normaliza channel para maiúsculas para bater com os values do select
+  const ch = (tpl?.channel || 'BOTH').toUpperCase();
+  document.getElementById('tpl-channel').value = ch;
   document.getElementById('tpl-order').value = tpl?.sequence_order || 1;
   document.getElementById('tpl-subject').value = tpl?.subject || '';
   document.getElementById('tpl-body').value = tpl?.body || '';
   document.getElementById('tpl-active').checked = tpl?.is_active !== false;
   document.getElementById('template-modal').classList.remove('hidden');
 }
+
 
 function closeTemplateModal() {
   document.getElementById('template-modal').classList.add('hidden');
@@ -284,15 +303,26 @@ function editTemplate(id) {
 
 async function saveTemplate() {
   const id = document.getElementById('tpl-id').value;
+
+  // channel e phase devem ser enviados no formato exato do enum do backend
+  const channelRaw = document.getElementById('tpl-channel').value;
+  const channelMap = { email: 'EMAIL', whatsapp: 'WHATSAPP', both: 'BOTH', EMAIL: 'EMAIL', WHATSAPP: 'WHATSAPP', BOTH: 'BOTH' };
+  const channel = channelMap[channelRaw] || channelRaw.toUpperCase();
+
   const payload = {
     name: document.getElementById('tpl-name').value.trim(),
     phase: document.getElementById('tpl-phase').value,
-    channel: document.getElementById('tpl-channel').value,
+    channel,
     sequence_order: parseInt(document.getElementById('tpl-order').value) || 1,
     subject: document.getElementById('tpl-subject').value.trim() || null,
     body: document.getElementById('tpl-body').value.trim(),
     is_active: document.getElementById('tpl-active').checked,
   };
+
+  if (!payload.name || !payload.body) {
+    showToast('Nome e corpo da instrução são obrigatórios.', 'error');
+    return;
+  }
 
   try {
     if (id) {

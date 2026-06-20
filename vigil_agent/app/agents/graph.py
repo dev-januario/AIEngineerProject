@@ -24,7 +24,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Literal, TypedDict
 
-from anthropic import AsyncAnthropic
+import google.generativeai as genai
 from langgraph.graph import END, START, StateGraph
 
 from app.agents.prompts import (
@@ -85,25 +85,64 @@ class AgentState(TypedDict):
     error: str | None
 
 
-# ── Claude Client ─────────────────────────────────────────────────────────────
+# ── Gemini Client ─────────────────────────────────────────────────────────────
 
-def _get_claude_client() -> AsyncAnthropic:
-    return AsyncAnthropic(api_key=settings.anthropic_api_key)
+def _configure_gemini() -> None:
+    genai.configure(api_key=settings._gemini_key)
 
 
-async def _call_claude(system: str, user_message: str) -> str:
-    """Wrapper para chamada assíncrona ao Claude 3.5 Sonnet."""
-    client = _get_claude_client()
+async def _get_phase_system_prompt(phase: str, fallback: str) -> str:
+    """
+    Busca o system prompt para uma fase do funil no banco de dados.
+
+    O admin pode editar o 'body' do template no painel administrativo
+    para customizar o comportamento da IA sem tocar no código.
+
+    Se não houver template ativo para a fase informada, usa o prompt
+    hardcoded de prompts.py como fallback seguro.
+
+    Args:
+        phase: Valor do ENUM TemplatePhase (ex: 'confirmation', 'post_event_attended')
+        fallback: Prompt padrão de prompts.py a usar se o banco não tiver registro
+
+    Returns:
+        String do system prompt a usar como instrução para o Gemini
+    """
     try:
-        response = await client.messages.create(
-            model="claude-sonnet-4-5",
-            max_tokens=1024,
-            system=f"{SYSTEM_BASE}\n\n{system}",
-            messages=[{"role": "user", "content": user_message}],
-        )
-        return response.content[0].text
+        from app.db.session import AsyncSessionLocal
+        from app.models.message_template import MessageTemplate
+        from sqlalchemy import select
+
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(MessageTemplate).where(
+                    MessageTemplate.phase == phase,
+                    MessageTemplate.is_active == True,
+                ).order_by(MessageTemplate.sequence_order).limit(1)
+            )
+            tpl = result.scalar_one_or_none()
+            if tpl and tpl.body and len(tpl.body.strip()) > 20:
+                logger.info(f"[Gemini] Usando system prompt do banco para phase='{phase}' (id={tpl.id})")
+                return tpl.body.strip()
     except Exception as e:
-        logger.error(f"[Claude] Erro na chamada: {e}")
+        logger.warning(f"[Gemini] Não foi possível buscar template do banco para phase='{phase}': {e}")
+
+    logger.debug(f"[Gemini] Usando prompt hardcoded para phase='{phase}'")
+    return fallback
+
+
+async def _call_gemini(system: str, user_message: str) -> str:
+    """Wrapper para chamada assíncrona ao Gemini 2.5 Flash."""
+    _configure_gemini()
+    model = genai.GenerativeModel(
+        model_name="gemini-3.5-flash",
+        system_instruction=f"{SYSTEM_BASE}\n\n{system}",
+    )
+    try:
+        response = await model.generate_content_async(user_message)
+        return response.text
+    except Exception as e:
+        logger.error(f"[Gemini] Erro na chamada: {e}")
         raise
 
 
@@ -246,8 +285,8 @@ async def node_send_pre_event(state: AgentState) -> AgentState:
         template_name = f"follow_up_{attempts}"
 
     try:
-        # Gera mensagem personalizada com Claude
-        generated_message = await _call_claude(system=prompt, user_message="Gere a mensagem agora.")
+        # Gera mensagem personalizada com Gemini
+        generated_message = await _call_gemini(system=prompt, user_message="Gere a mensagem agora.")
 
         # Envia pelo canal preferencial
         if preferred_channel == "whatsapp" and state["lead_phone"]:
@@ -310,13 +349,21 @@ async def node_process_response(state: AgentState) -> AgentState:
         "qualification_score": state["qualification_score"],
     })
 
-    prompt = PRE_EVENT_RESPONSE_PROMPT.format(
+    prompt_base = await _get_phase_system_prompt(
+        phase="reply",
+        fallback=PRE_EVENT_RESPONSE_PROMPT.format(
+            lead_response=inbound,
+            lead_context=lead_ctx,
+        ),
+    )
+    # Se veio do banco (sem {lead_response}), injeta a resposta no user_message
+    prompt = prompt_base if "{lead_response}" not in prompt_base else PRE_EVENT_RESPONSE_PROMPT.format(
         lead_response=inbound,
         lead_context=lead_ctx,
     )
 
     try:
-        analysis = await _call_claude(
+        analysis = await _call_gemini(
             system=prompt,
             user_message=f'Analise a resposta e determine a intenção: "{inbound}"',
         )
@@ -391,22 +438,30 @@ async def node_send_post_event(state: AgentState) -> AgentState:
         "qualification_score": state["qualification_score"],
     })
 
+    first_name = state["lead_name"].split()[0] if state["lead_name"] else "Participante"
+
     if attended:
-        prompt = POST_EVENT_ATTENDED_PROMPT.format(
-            lead_context=lead_ctx,
-            event_notes=event_notes,
+        prompt = await _get_phase_system_prompt(
+            phase="post_event_attended",
+            fallback=POST_EVENT_ATTENDED_PROMPT.format(
+                lead_context=lead_ctx,
+                event_notes=event_notes,
+            ),
         )
         template_name = "post_event_attended"
-        subject = "Foi ótimo te ver no Vigil Summit! 🤝"
+        subject = f"{first_name}, foi ótimo ter você no Vigil Summit! 🤝"
     else:
-        prompt = POST_EVENT_NO_SHOW_PROMPT.format(lead_context=lead_ctx)
+        prompt = await _get_phase_system_prompt(
+            phase="post_event_no_show",
+            fallback=POST_EVENT_NO_SHOW_PROMPT.format(lead_context=lead_ctx),
+        )
         template_name = "post_event_no_show"
-        subject = "Algo especial para você — Vigil Summit"
+        subject = f"{first_name}, trouxemos algo especial para você — Vigil Summit"
 
     try:
-        generated_message = await _call_claude(
+        generated_message = await _call_gemini(
             system=prompt,
-            user_message="Gere a mensagem de follow-up pós-evento agora.",
+            user_message="Gere a mensagem de follow-up pós-evento agora. Seja altamente personalizado, consultivo e direto ao ponto.",
         )
 
         notification_result = await notify_lead(

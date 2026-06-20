@@ -32,8 +32,14 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "mysql+aiomysql://vigil:vigil123@localhost:3306/vigildb"
 
-    # Anthropic
-    anthropic_api_key: str = ""
+    # Gemini
+    gemini_api_key: str = ""  # lido como API_KEY_AI no .env
+    api_key_ai: str = ""  # alias direto da env var
+
+    @property
+    def _gemini_key(self) -> str:
+        """Retorna a chave Gemini, priorizando api_key_ai (API_KEY_AI no .env)."""
+        return self.api_key_ai or self.gemini_api_key
 
     # Security
     secret_key: str = "change-me-in-production"
@@ -56,6 +62,9 @@ class Settings(BaseSettings):
     imap_host: str = "imap.gmail.com"
     imap_port: int = 993
     imap_poll_interval_seconds: int = 60  # verifica a cada 60s
+
+    # Apollo.io (enriquecimento de perfil por LinkedIn URL ou email)
+    apollo_api_key: str = ""  # https://app.apollo.io → Settings → Integrations → API
 
     # Admin Panel JWT
     admin_jwt_secret: str = "vigil-admin-secret-change-in-production"

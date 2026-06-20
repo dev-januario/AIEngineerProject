@@ -125,29 +125,31 @@ async def poll_inbox_for_replies() -> None:
         logger.debug("[IMAP] Credenciais não configuradas — polling ignorado")
         return
 
-    logger.info("[IMAP] Verificando caixa de entrada por respostas de leads...")
+    logger.info("[IMAP/Debug] 🔍 Verificando caixa de entrada...")
+    logger.info(f"[IMAP/Debug] Conta: {settings.smtp_user} | Host: {settings.imap_host}:{settings.imap_port}")
 
     try:
-        # Executa a operação IMAP síncrona em thread separada para não bloquear o loop
         replies = await asyncio.to_thread(_fetch_unread_replies)
     except Exception as e:
-        logger.error(f"[IMAP] Erro ao conectar ao servidor: {e}")
+        logger.error(f"[IMAP/Debug] ❌ Erro ao conectar ao servidor IMAP: {e}")
         return
 
     if not replies:
-        logger.debug("[IMAP] Nenhuma resposta nova encontrada")
+        logger.info("[IMAP/Debug] ✔️ Nenhuma resposta nova encontrada neste ciclo")
         return
 
-    logger.info(f"[IMAP] {len(replies)} resposta(s) nova(s) encontrada(s)")
+    logger.info(f"[IMAP/Debug] 📨 {len(replies)} resposta(s) nova(s) encontrada(s):")
+    for i, (sender, body) in enumerate(replies):
+        logger.info(f"  [{i+1}] De: {sender} | Corpo: {len(body)} chars | Preview: {body[:80]!r}")
 
-    # Envia cada reply para o endpoint interno do servidor (garante contexto correto do event loop)
     import httpx
 
     async with httpx.AsyncClient(base_url="http://127.0.0.1:8000", timeout=10.0) as client:
         for sender_email, message_body in replies:
             if not sender_email or not message_body:
+                logger.warning(f"[IMAP/Debug] Ignorado: sender={sender_email!r} | body vazio={not message_body}")
                 continue
-            logger.info(f"[IMAP] Encaminhando reply de: {sender_email[:30]}...")
+            logger.info(f"[IMAP/Debug] ➡️ Encaminhando reply de: {sender_email}")
             try:
                 resp = await client.post(
                     "/api/v1/webhooks/inbound",
@@ -158,11 +160,11 @@ async def poll_inbox_for_replies() -> None:
                     },
                 )
                 if resp.status_code == 200:
-                    logger.info(f"[IMAP] Reply encaminhado com sucesso: {sender_email[:30]}")
+                    logger.info(f"[IMAP/Debug] ✅ Reply encaminhado com sucesso para {sender_email}")
                 else:
-                    logger.warning(f"[IMAP] Endpoint retornou {resp.status_code}: {resp.text[:100]}")
+                    logger.warning(f"[IMAP/Debug] ⚠️ Endpoint retornou {resp.status_code}: {resp.text[:150]}")
             except Exception as e:
-                logger.error(f"[IMAP] Erro ao encaminhar reply de {sender_email}: {e}")
+                logger.error(f"[IMAP/Debug] ❌ Erro ao encaminhar reply de {sender_email}: {e}")
 
 
 def _fetch_unread_replies() -> list[tuple[str, str]]:

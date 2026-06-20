@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
     rel="stylesheet" />
-  <link rel="stylesheet" href="/style.css" />
+  <link rel="stylesheet" href="/style.css?v=2" />
 </head>
 
 <body>
@@ -97,7 +97,7 @@
       <div class="feature-card" data-delay="100">
         <div class="feature-icon">🤖</div>
         <h3>IA que Antecipa Ameaças</h3>
-        <p>Claude 3.5 Sonnet analisa padrões e prevê riscos antes que se tornem incidentes críticos.</p>
+        <p>Gemini 2.5 Flash analisa padrões e prevê riscos antes que se tornem incidentes críticos.</p>
       </div>
       <div class="feature-card" data-delay="200">
         <div class="feature-icon">📋</div>
@@ -178,13 +178,55 @@
               <span class="linkedin-prefix">linkedin.com/in/</span>
               <input type="text" id="linkedin_username" name="linkedin_username" placeholder="seu-usuario"
                 autocomplete="off" autocapitalize="none" />
+              <span id="linkedin-loading" class="linkedin-spinner" hidden>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <circle cx="12" cy="12" r="10" stroke-opacity="0.25" />
+                  <path d="M12 2a10 10 0 0 1 10 10" class="spin-arc" />
+                </svg>
+              </span>
             </div>
             <span class="field-hint">
               Nossa IA buscará automaticamente: cargo, empresa, setor e tamanho da organização.
             </span>
             <span class="field-error" id="linkedin-error"></span>
+
+            <!-- Card de preview da IA -->
+            <div id="linkedin-preview-card" class="linkedin-preview-card" hidden>
+              <div class="preview-header">
+                <span class="ai-badge" id="preview-confidence-badge">⚡ IA detectou</span>
+              </div>
+              <div class="preview-fields">
+                <div class="preview-field">
+                  <span class="preview-label">Cargo</span>
+                  <span class="preview-value" id="preview-role">—</span>
+                </div>
+                <div class="preview-field">
+                  <span class="preview-label">Empresa</span>
+                  <span class="preview-value" id="preview-company">—</span>
+                </div>
+                <div class="preview-field">
+                  <span class="preview-label">Setor</span>
+                  <span class="preview-value" id="preview-sector">—</span>
+                </div>
+              </div>
+              <div id="preview-company-size" style="font-size:0.75rem;color:#6ee7b7;margin-top:0.35rem;padding-top:0.35rem;border-top:1px solid rgba(255,255,255,0.06)" hidden></div>
+              <p class="preview-note">
+                ✅ Dados usados para qualificar sua inscrição. Se estiver incorreto, use o modo
+                <button type="button" class="link-btn" onclick="setProfileMode('manual')">Preencher
+                  manualmente</button>.
+              </p>
+            </div>
+
+            <!-- Aviso quando confiança é baixa -->
+            <div id="linkedin-low-confidence" class="linkedin-low-confidence" hidden>
+              <span>⚠️</span>
+              Username genérico detectado. Por favor, use
+              <button type="button" class="link-btn" onclick="setProfileMode('manual')">Preencher manualmente</button>
+              para garantir a análise correta do seu perfil.
+            </div>
           </div>
         </div>
+
 
         <!-- Modo manual: usuário preenche todos os campos profissionais -->
         <div id="manual-section" hidden>
@@ -252,7 +294,7 @@
         <div id="companion-section" hidden>
           <!-- Alerta informativo -->
           <div class="companion-notice" style="margin-bottom: 15px;">
-            <div style="border: 1px solid yellow; padding: 15px; border-radius: 12px; background-color: #ffec8b1e;">
+            <div>
               <span class="companion-notice-icon">⚠️</span>
               <strong>Atenção:</strong> É necessário que o acompanhante realize a própria inscrição para garantir sua
               vaga.
@@ -272,16 +314,14 @@
               <label for="companion_relationship">Vínculo Profissional <span class="required">*</span></label>
               <select id="companion_relationship" name="companion_relationship">
                 <option value="">Selecione...</option>
-                <option value="partner">Sócio(a)</option>
+                <option value="partner">Sócio(a) ou Co-fundador(a)</option>
                 <option value="director">Diretor(a)</option>
                 <option value="manager">Gerente</option>
                 <option value="coordinator">Coordenador(a)</option>
-                <option value="team_member">Membro da equipe</option>
-                <option value="colleague">Colaborador(a) da mesma empresa</option>
                 <option value="business_partner">Parceiro(a) de negócios</option>
                 <option value="guest_executive">Executivo(a) convidado(a)</option>
               </select>
-              <span class="field-hint">Somente acompanhantes com vínculo profissional são aceitos.</span>
+              <span class="field-hint">Somente acompanhantes com cargo ou vínculo executivo são aceitos.</span>
               <span class="field-error" id="companion-relationship-error"></span>
             </div>
           </div>
@@ -294,7 +334,11 @@
               <span class="checkbox-custom"></span>
               <span class="consent-text">
                 Autorizo o tratamento dos meus dados pessoais para fins de inscrição e comunicação
-                sobre o Vigil Summit, em conformidade com a <strong>LGPD (Lei 13.709/2018)</strong>.
+                sobre o Vigil Summit, em conformidade com a
+                <a href="https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2018/lei/l13709.htm" target="_blank"
+                  rel="noopener noreferrer" style="color: #7c6ff7; text-decoration: underline;">
+                  <strong>LGPD (Lei 13.709/2018)</strong>
+                </a>.
               </span>
             </label>
             <span class="field-error" id="lgpd-error"></span>
@@ -310,14 +354,14 @@
         <!-- Disclaimer exclusividade do evento -->
         <div class="event-exclusivity-notice">
           <p>
-            <strong>O Vigil Summit é um evento exclusivo para líderes de Tecnologia, Segurança da Informação e Gestão de Riscos.</strong>
+            <strong>O Vigil Summit é um evento exclusivo para líderes de Tecnologia, Segurança da Informação e Gestão de
+              Riscos.</strong>
             Todas as inscrições serão avaliadas antes da confirmação da participação.
           </p>
         </div>
 
         <button type="submit" id="submit-btn" class="submit-button">
           <span class="submit-text">Enviar Inscrição</span>
-          <span class="submit-arrow">→</span>
           <div class="submit-loader" hidden>
             <div class="loader-ring"></div>
           </div>
@@ -359,7 +403,7 @@
     </div>
   </footer>
 
-  <script src="/app.js"></script>
+  <script src="/app.js?v=4"></script>
 </body>
 
 </html>

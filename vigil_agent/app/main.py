@@ -84,319 +84,161 @@ async def _seed_initial_data(db_conn):
             db.add(event)
             logger.info("✅ Evento padrão criado")
 
-        # Templates iniciais — aditivo: verifica cada fase individualmente
-        from sqlalchemy import select as _select
+        # ── Prompts de instrução editáveis pelo admin ──────────────────────────
+        # Cada template é um system prompt que o Gemini usa ao gerar mensagens.
+        # O admin pode editar o 'body' no painel sem tocar no código.
+        # Se já existem, não recria (idempotente).
+        tpl_count_result = await db.execute(
+            __import__("sqlalchemy", fromlist=["select"]).select(MessageTemplate)
+        )
+        existing_templates = tpl_count_result.scalars().all()
 
-        seed_map = {
-            TemplatePhase.CONFIRMATION: MessageTemplate(
-                name="Confirmação de Inscrição",
-                phase=TemplatePhase.CONFIRMATION,
-                channel=TemplateChannel.BOTH,
-                subject="✅ Inscrição Confirmada — {{NOME_EVENTO}}",
-                body=(
-                    "Olá, {{PRIMEIRO_NOME}}! 👋\n\n"
-                    "Sua inscrição no {{NOME_EVENTO}} foi confirmada com sucesso!\n\n"
-                    "📅 Data: {{DATA_EVENTO}}\n"
-                    "🕘 Horário: {{HORA_EVENTO}}\n"
-                    "📍 Local: {{LOCAL_EVENTO}}\n\n"
-                    "Em breve, você receberá mais informações sobre a agenda e os painelistas.\n\n"
-                    "Qualquer dúvida, é só responder essa mensagem.\n\n"
-                    "Até lá! 🚀\n"
-                    "Equipe Vigil.AI"
-                ),
-                sequence_order=1,
-                is_active=True,
-            ),
-            TemplatePhase.POST_EVENT_ATTENDED: MessageTemplate(
-                name="Pós-Evento — Presente (Agradecimento)",
-                phase=TemplatePhase.POST_EVENT_ATTENDED,
-                channel=TemplateChannel.BOTH,
-                subject="Foi um prazer ter você no {{NOME_EVENTO}}, {{PRIMEIRO_NOME}}! 🌟",
-                body=(
-                    "{{PRIMEIRO_NOME}}, muito obrigado por estar com a gente no {{NOME_EVENTO}}! 👏❤️‍🔥\n\n"
-                    "Foi incrível trocar experiências com profissionais como você, que "
-                    "estão na linha de frente da segurança em {{EMPRESA}}.\n\n"
-                    "Gostaríamos de continuar essa conversa. Que tal uma reunião de 30 minutos "
-                    "para explorar como a Vigil.AI pode apoiar os desafios que debatemos no evento?\n\n"
-                    "📅 Agende aqui: [LINK_CALENDÁRIO]\n\n"
-                    "Abraço,\n"
-                    "Equipe Vigil.AI"
-                ),
-                sequence_order=1,
-                is_active=True,
-            ),
-            TemplatePhase.POST_EVENT_NO_SHOW: MessageTemplate(
-                name="Pós-Evento — Ausente (Conforto)",
-                phase=TemplatePhase.POST_EVENT_NO_SHOW,
-                channel=TemplateChannel.BOTH,
-                subject="Sentimos sua falta no {{NOME_EVENTO}}, {{PRIMEIRO_NOME}}",
-                body=(
-                    "{{PRIMEIRO_NOME}}, sentimos muito a sua ausência no {{NOME_EVENTO}}. 🙏\n\n"
-                    "Sabemos que a agenda de {{CARGO}} na {{EMPRESA}} é corrida e imprevistos acontecem.\n\n"
-                    "Os temas debatidos foram muito relevantes e gostaríamos de compartilhar "
-                    "os principais insights com você. Posso te enviar o resumo do evento?\n\n"
-                    "E se quiser conversar sobre como a Vigil.AI pode ajudar a sua empresa, "
-                    "estamos disponíveis para uma breve conversa quando preferir.\n\n"
-                    "📅 Agende um horário: [LINK_CALENDÁRIO]\n\n"
-                    "Abraço,\n"
-                    "Equipe Vigil.AI"
-                ),
-                sequence_order=1,
-                is_active=True,
-            ),
-            TemplatePhase.POST_EVENT: MessageTemplate(
-                name="Follow-up Pós-Evento — Agendamento",
-                phase=TemplatePhase.POST_EVENT,
-                channel=TemplateChannel.BOTH,
-                subject="Foi um prazer ter você no {{NOME_EVENTO}}, {{PRIMEIRO_NOME}}!",
-                body=(
-                    "{{PRIMEIRO_NOME}}, foi ótimo ter você no {{NOME_EVENTO}}! 🙌\n\n"
-                    "Como {{CARGO}} na {{EMPRESA}}, tenho certeza que os temas discutidos "
-                    "têm aplicação direta nos seus desafios de segurança.\n\n"
-                    "Que tal uma conversa de 30 minutos para explorar como a Vigil.AI "
-                    "pode ajudar a sua equipe?\n\n"
-                    "📅 Aqui está meu link para agendar: [LINK_CALENDÁRIO]\n\n"
-                    "Abraço,\n"
-                    "Equipe Vigil.AI"
-                ),
-                sequence_order=1,
-                is_active=True,
-            ),
-            # ── Templates Pré-Evento: Persona A (Participante simples) ──────────
-            TemplatePhase.PRE_EVENT_PARTICIPANT: [
-                MessageTemplate(
-                    name="Pré-Evento A — 30 dias",
-                    phase=TemplatePhase.PRE_EVENT_PARTICIPANT,
-                    channel=TemplateChannel.BOTH,
-                    days_before_event=30,
-                    subject="📅 {{NOME_EVENTO}} está chegando, {{PRIMEIRO_NOME}}!",
-                    body=(
-                        "{{PRIMEIRO_NOME}}, tudo bem? 👋\n\n"
-                        "Faltam {{DIAS_RESTANTES}} para o {{NOME_EVENTO}} e a antecedência vale ouro!\n\n"
-                        "📅 Data: {{DATA_EVENTO}}\n"
-                        "🕒 Horário: {{HORA_EVENTO}}\n"
-                        "📍 Local: {{LOCAL_EVENTO}}\n\n"
-                        "Reserve já na sua agenda e prepare-se para um dia de conteúdo e networking com "
-                        "os principais líderes de segurança do país.\n\n"
-                        "Qualquer dúvida, responda esta mensagem.\n\n"
-                        "Até lá! 🚀\n"
-                        "Equipe Vigil.AI"
-                    ),
-                    sequence_order=1, is_active=True,
-                ),
-                MessageTemplate(
-                    name="Pré-Evento A — 15 dias",
-                    phase=TemplatePhase.PRE_EVENT_PARTICIPANT,
-                    channel=TemplateChannel.BOTH,
-                    days_before_event=15,
-                    subject="🔥 {{NOME_EVENTO}} — Confira os destaques que esperam por você",
-                    body=(
-                        "{{PRIMEIRO_NOME}}, em {{DIAS_RESTANTES}} você terá acesso a conteúdo exclusivo!\n\n"
-                        "Veja o que acontece no {{NOME_EVENTO}}:\n"
-                        "- Palestras com líderes de segurança da informação\n"
-                        "- Paineis sobre IA e cibersegurança\n"
-                        "- Networking com CISOs, CTOs e Diretores de TI\n\n"
-                        "Palestrantes confirmados:\n{{PALESTRANTES}}\n\n"
-                        "📅 {{DATA_EVENTO}} às {{HORA_EVENTO}}\n"
-                        "📍 {{LOCAL_EVENTO}}\n\n"
-                        "Nos vemos lá! ✌️\n"
-                        "Equipe Vigil.AI"
-                    ),
-                    sequence_order=2, is_active=True,
-                ),
-                MessageTemplate(
-                    name="Pré-Evento A — 7 dias",
-                    phase=TemplatePhase.PRE_EVENT_PARTICIPANT,
-                    channel=TemplateChannel.BOTH,
-                    days_before_event=7,
-                    subject="⏳ Falta 1 semana! — {{NOME_EVENTO}}",
-                    body=(
-                        "{{PRIMEIRO_NOME}}, falta exatamente {{DIAS_RESTANTES}} para o {{NOME_EVENTO}}!\n\n"
-                        "Só um lembrete rápido:\n"
-                        "📅 {{DATA_EVENTO}} às {{HORA_EVENTO}}\n"
-                        "📍 {{LOCAL_EVENTO}}\n\n"
-                        "Confirma que está tudo certo para a sua presença?\n"
-                        "Responda com 'SIM' e garantimos sua vaga na lista de confirmados. 🔐\n\n"
-                        "Equipe Vigil.AI"
-                    ),
-                    sequence_order=3, is_active=True,
-                ),
-                MessageTemplate(
-                    name="Pré-Evento A — 3 dias",
-                    phase=TemplatePhase.PRE_EVENT_PARTICIPANT,
-                    channel=TemplateChannel.WHATSAPP,
-                    days_before_event=3,
-                    subject=None,
-                    body=(
-                        "{{PRIMEIRO_NOME}}, faltam apenas {{DIAS_RESTANTES}}! 🚀\n\n"
-                        "📅 {{DATA_EVENTO}} às {{HORA_EVENTO}}\n"
-                        "📍 {{LOCAL_EVENTO}}\n\n"
-                        "Verifique seu transporte e os documentos de acesso. \n"
-                        "Qualquer dúvida, responda aqui! 👌"
-                    ),
-                    sequence_order=4, is_active=True,
-                ),
-                MessageTemplate(
-                    name="Pré-Evento A — 1 dia",
-                    phase=TemplatePhase.PRE_EVENT_PARTICIPANT,
-                    channel=TemplateChannel.WHATSAPP,
-                    days_before_event=1,
-                    subject=None,
-                    body=(
-                        "{{PRIMEIRO_NOME}}, é amanhã! 🎉\n\n"
-                        "O {{NOME_EVENTO}} acontece amanhã às {{HORA_EVENTO}}.\n"
-                        "📍 {{LOCAL_EVENTO}}\n\n"
-                        "Durma bem, chegue cedo e prepare suas perguntas.\n"
-                        "Mal podemos esperar para see você! 🙌\n\n"
-                        "Equipe Vigil.AI"
-                    ),
-                    sequence_order=5, is_active=True,
-                ),
-            ],
-            # ── Templates Pré-Evento: Persona B (Com Acompanhante) ────────────
-            TemplatePhase.PRE_EVENT_WITH_COMPANION: [
-                MessageTemplate(
-                    name="Pré-Evento B — 30 dias",
-                    phase=TemplatePhase.PRE_EVENT_WITH_COMPANION,
-                    channel=TemplateChannel.BOTH,
-                    days_before_event=30,
-                    subject="📅 {{NOME_EVENTO}} está chegando — você e seu acompanhante",
-                    body=(
-                        "{{PRIMEIRO_NOME}}, tudo bem? 👋\n\n"
-                        "Faltam {{DIAS_RESTANTES}} para o {{NOME_EVENTO}}!\n\n"
-                        "📅 {{DATA_EVENTO}} às {{HORA_EVENTO}}\n"
-                        "📍 {{LOCAL_EVENTO}}\n\n"
-                        "Lembre-se: seu acompanhante ({{NOME_ACOMPANHANTE}}) precisa realizar "
-                        "a inscrição própria para garantir a vaga dele(a). "
-                        "Se ainda não fez, dá uma forcinha! 😉\n\n"
-                        "Qualquer dúvida, responda esta mensagem.\n\n"
-                        "Até lá! 🚀\n"
-                        "Equipe Vigil.AI"
-                    ),
-                    sequence_order=1, is_active=True,
-                ),
-                MessageTemplate(
-                    name="Pré-Evento B — 15 dias",
-                    phase=TemplatePhase.PRE_EVENT_WITH_COMPANION,
-                    channel=TemplateChannel.BOTH,
-                    days_before_event=15,
-                    subject="🔥 {{NOME_EVENTO}} em {{DIAS_RESTANTES}} — você e seu convidado(a)!",
-                    body=(
-                        "{{PRIMEIRO_NOME}}, em {{DIAS_RESTANTES}} a gente se encontra no {{NOME_EVENTO}}!\n\n"
-                        "Palestrantes confirmados:\n{{PALESTRANTES}}\n\n"
-                        "📅 {{DATA_EVENTO}} às {{HORA_EVENTO}} | 📍 {{LOCAL_EVENTO}}\n\n"
-                        "👥 Lembrete: verifique se {{NOME_ACOMPANHANTE}} já completou a inscrição. "
-                        "Sem inscrição confirmada, a entrada pode ser negada na porta.\n\n"
-                        "Nos vemos lá! ✌️\n"
-                        "Equipe Vigil.AI"
-                    ),
-                    sequence_order=2, is_active=True,
-                ),
-                MessageTemplate(
-                    name="Pré-Evento B — 7 dias",
-                    phase=TemplatePhase.PRE_EVENT_WITH_COMPANION,
-                    channel=TemplateChannel.BOTH,
-                    days_before_event=7,
-                    subject="⏳ 1 semana! — {{NOME_EVENTO}} — Confirme você e seu acompanhante",
-                    body=(
-                        "{{PRIMEIRO_NOME}}, {{DIAS_RESTANTES}} para o {{NOME_EVENTO}}!\n\n"
-                        "📅 {{DATA_EVENTO}} às {{HORA_EVENTO}} | 📍 {{LOCAL_EVENTO}}\n\n"
-                        "Por favor, confirme a presença respondendo 'SIM'.\n"
-                        "E não esqueça de perguntar a {{NOME_ACOMPANHANTE}} se já finalizou o cadastro. 👍\n\n"
-                        "Equipe Vigil.AI"
-                    ),
-                    sequence_order=3, is_active=True,
-                ),
-                MessageTemplate(
-                    name="Pré-Evento B — 3 dias",
-                    phase=TemplatePhase.PRE_EVENT_WITH_COMPANION,
-                    channel=TemplateChannel.WHATSAPP,
-                    days_before_event=3,
-                    subject=None,
-                    body=(
-                        "{{PRIMEIRO_NOME}}, apenas {{DIAS_RESTANTES}}! 🚀\n"
-                        "📅 {{DATA_EVENTO}} às {{HORA_EVENTO}} | 📍 {{LOCAL_EVENTO}}\n\n"
-                        "Lembrete final: {{NOME_ACOMPANHANTE}} está inscrito(a)? 😉 Garanta que sim!"
-                    ),
-                    sequence_order=4, is_active=True,
-                ),
-                MessageTemplate(
-                    name="Pré-Evento B — 1 dia",
-                    phase=TemplatePhase.PRE_EVENT_WITH_COMPANION,
-                    channel=TemplateChannel.WHATSAPP,
-                    days_before_event=1,
-                    subject=None,
-                    body=(
-                        "{{PRIMEIRO_NOME}}, é amanhã! 🎉\n"
-                        "{{NOME_EVENTO}} — {{HORA_EVENTO}} | {{LOCAL_EVENTO}}\n\n"
-                        "Você e {{NOME_ACOMPANHANTE}} estão prontos? 🙌 "
-                        "Mal podemos esperar para receber vocês!\n\n"
-                        "Equipe Vigil.AI"
-                    ),
-                    sequence_order=5, is_active=True,
-                ),
-            ],
-            # ── Templates Pré-Evento: Persona C (Acompanhante não inscrito) ───
-            TemplatePhase.PRE_EVENT_COMPANION_PENDING: [
-                MessageTemplate(
-                    name="Pré-Evento C — 7 dias",
-                    phase=TemplatePhase.PRE_EVENT_COMPANION_PENDING,
-                    channel=TemplateChannel.EMAIL,
-                    days_before_event=7,
-                    subject="⚠️ Sua vaga no {{NOME_EVENTO}} ainda não está garantida",
-                    body=(
-                        "Olá, {{PRIMEIRO_NOME}}!\n\n"
-                        "Você foi convidado(a) para o {{NOME_EVENTO}} e faltam apenas {{DIAS_RESTANTES}}!\n\n"
-                        "Sua inscrição ainda não foi concluída. "
-                        "Sem ela, sua entrada no evento não estará garantida.\n\n"
-                        "👉 Inscreva-se agora: {{LINK_INSCRICAO}}\n\n"
-                        "📅 {{DATA_EVENTO}} às {{HORA_EVENTO}}\n"
-                        "📍 {{LOCAL_EVENTO}}\n\n"
-                        "Não perca esta oportunidade!\n\n"
-                        "Equipe Vigil.AI"
-                    ),
-                    sequence_order=1, is_active=True,
-                ),
-                MessageTemplate(
-                    name="Pré-Evento C — 3 dias",
-                    phase=TemplatePhase.PRE_EVENT_COMPANION_PENDING,
-                    channel=TemplateChannel.EMAIL,
-                    days_before_event=3,
-                    subject="🚨 Última chance! Garanta sua vaga no {{NOME_EVENTO}}",
-                    body=(
-                        "{{PRIMEIRO_NOME}}, é agora ou nunca! ⏰\n\n"
-                        "Faltam apenas {{DIAS_RESTANTES}} para o {{NOME_EVENTO}} "
-                        "e sua inscrição ainda está pendente.\n\n"
-                        "As vagas são limitadas e podem esgotar a qualquer momento.\n"
-                        "👉 Complete sua inscrição agora: {{LINK_INSCRICAO}}\n\n"
-                        "📅 {{DATA_EVENTO}} às {{HORA_EVENTO}} | 📍 {{LOCAL_EVENTO}}\n\n"
-                        "Não perca!\n"
-                        "Equipe Vigil.AI"
-                    ),
-                    sequence_order=2, is_active=True,
-                ),
-            ],
-        }
+        # Limpa templates antigos (mensagens prontas) e insere prompts de instrução
+        has_prompt_templates = any(
+            "system prompt" in (t.name or "").lower() or
+            "seu trabalho é gerar" in (t.body or "").lower()
+            for t in existing_templates
+        )
 
-        added = 0
-        for phase, templates in seed_map.items():
-            r = await db.execute(
-                _select(MessageTemplate.id)
-                .where(MessageTemplate.phase == phase)
-                .limit(1)
-            )
-            if r.scalar_one_or_none() is None:
-                if isinstance(templates, list):
-                    for tpl in templates:
-                        db.add(tpl)
-                        added += 1
-                else:
-                    db.add(templates)
-                    added += 1
-        if added:
-            logger.info(f"✅ {added} template(s) adicionado(s) ao seed")
+        if not has_prompt_templates:
+            # Remove templates antigos se ainda existirem
+            for t in existing_templates:
+                await db.delete(t)
+            await db.flush()
+
+            # Insere prompts de instrução por fase
+            prompt_templates = [
+                MessageTemplate(
+                    name="[Prompt] Confirmação de Inscrição — Aprovado",
+                    phase=TemplatePhase.CONFIRMATION,
+                    channel=TemplateChannel.EMAIL,
+                    subject="Sua vaga no Vigil Summit está confirmada, {PRIMEIRO_NOME}",
+                    body=(
+                        "Seu trabalho é gerar uma mensagem de confirmação de inscrição para um lead APROVADO no Vigil Summit.\n\n"
+                        "REGRAS OBRIGATÓRIAS:\n"
+                        "- Comece pelo primeiro nome (nunca 'Prezado')\n"
+                        "- Mencione o cargo/setor do lead explicitamente\n"
+                        "- Explique por que o perfil DESTE lead é exatamente o que o Vigil Summit busca\n"
+                        "- Inclua data, horário e local de forma natural (não como lista)\n"
+                        "- Mencione 1-2 palestrantes confirmados se disponíveis\n"
+                        "- Termine com CTA para salvar na agenda\n"
+                        "- Tom: caloroso, exclusivo, profissional — como carta de um colega executivo\n"
+                        "- Extensão: 200-280 palavras\n"
+                        "- PROIBIDO: bullets, listas, linguagem corporativa vazia, saudações genéricas"
+                    ),
+                    sequence_order=1,
+                    is_active=True,
+                ),
+                MessageTemplate(
+                    name="[Prompt] Inscrição em Análise",
+                    phase=TemplatePhase.CONFIRMATION,
+                    channel=TemplateChannel.EMAIL,
+                    subject="Recebemos sua inscrição para o Vigil Summit, {PRIMEIRO_NOME}",
+                    body=(
+                        "Seu trabalho é gerar uma mensagem honesta informando que a inscrição está EM ANÁLISE.\n\n"
+                        "REGRAS OBRIGATÓRIAS:\n"
+                        "- Comece pelo primeiro nome\n"
+                        "- Confirme que a inscrição foi RECEBIDA com sucesso\n"
+                        "- Explique gentilmente que o evento é exclusivo para líderes executivos e que o perfil está sendo avaliado\n"
+                        "- Dê prazo claro: 'Nossa equipe analisará em até 48 horas úteis'\n"
+                        "- Tom: transparente, respeitoso, profissional\n"
+                        "- Extensão: 150-200 palavras\n"
+                        "- PROIBIDO: prometer aprovação, criar expectativa de confirmação definitiva"
+                    ),
+                    sequence_order=2,
+                    is_active=True,
+                ),
+                MessageTemplate(
+                    name="[Prompt] Pré-Evento — Convite Inicial",
+                    phase=TemplatePhase.PRE_EVENT,
+                    channel=TemplateChannel.BOTH,
+                    subject="Vigil Summit 2026 — Convite exclusivo para {CARGO}",
+                    body=(
+                        "Seu trabalho é gerar um convite personalizado para o Vigil Summit.\n\n"
+                        "REGRAS OBRIGATÓRIAS:\n"
+                        "- Use o primeiro nome do lead\n"
+                        "- Mencione cargo e setor explicitamente para mostrar que você pesquisou\n"
+                        "- Conecte o evento a um problema específico do setor do lead\n"
+                        "- Seja direto: peça confirmação com CTA claro ('Responda SIM' ou 'Confirmo minha vaga')\n"
+                        "- WhatsApp: 150-250 palavras, conversacional\n"
+                        "- Email: 300-400 palavras, mais elaborado\n"
+                        "- Tom: consultivo, não vendedor. Você está CONVIDANDO um executivo, não vendendo"
+                    ),
+                    sequence_order=1,
+                    is_active=True,
+                ),
+                MessageTemplate(
+                    name="[Prompt] Pós-Evento — Presente (Agradecimento)",
+                    phase=TemplatePhase.POST_EVENT_ATTENDED,
+                    channel=TemplateChannel.EMAIL,
+                    subject="Foi ótimo te ver no Vigil Summit, {PRIMEIRO_NOME}",
+                    body=(
+                        "Seu trabalho é gerar um follow-up comercial para quem ESTEVE PRESENTE no Vigil Summit.\n\n"
+                        "REGRAS OBRIGATÓRIAS:\n"
+                        "- Referencie algo específico do evento (tema, painel, networking)\n"
+                        "- Conecte diretamente com o problema de segurança do lead (use os interesses de security_interests)\n"
+                        "- Proponha reunião/demo com valor claro para o cargo/setor do lead\n"
+                        "- CTA específico: pergunte sobre disponibilidade para uma conversa de 20-30 min\n"
+                        "- Tom: warm, consultivo — você está continuando uma conversa que JÁ aconteceu\n"
+                        "- Extensão: 180-250 palavras\n"
+                        "- PROIBIDO: linguagem genérica, começar com apenas 'Espero que tenha gostado'"
+                    ),
+                    sequence_order=1,
+                    is_active=True,
+                ),
+                MessageTemplate(
+                    name="[Prompt] Pós-Evento — Ausente (Recuperação)",
+                    phase=TemplatePhase.POST_EVENT_NO_SHOW,
+                    channel=TemplateChannel.EMAIL,
+                    subject="Guardamos algo especial para você, {PRIMEIRO_NOME}",
+                    body=(
+                        "Seu trabalho é gerar uma mensagem de recuperação para quem NÃO COMPARECEU ao Vigil Summit.\n\n"
+                        "REGRAS OBRIGATÓRIAS:\n"
+                        "- NÃO exponha o no-show de forma constrangedora (nunca 'Sentimos sua falta')\n"
+                        "- Ofereça valor imediato: resumo exclusivo do evento ou material relevante para o setor\n"
+                        "- Use o no-show como oportunidade para uma conversa direta sobre os temas do evento\n"
+                        "- Proponha uma reunião de 20-30 min com agenda clara e focada no problema do lead\n"
+                        "- Tom: gentil, propositivo, sem culpa nem pressão\n"
+                        "- Extensão: 160-220 palavras\n"
+                        "- PROIBIDO: linguagem genérica, pressão excessiva, expor o no-show"
+                    ),
+                    sequence_order=1,
+                    is_active=True,
+                ),
+                MessageTemplate(
+                    name="[Prompt] Resposta Inbound — Processamento",
+                    phase=TemplatePhase.REPLY,
+                    channel=TemplateChannel.BOTH,
+                    subject=None,
+                    body=(
+                        "Seu trabalho é analisar uma resposta de lead e tomar a ação correta.\n\n"
+                        "CENÁRIOS:\n"
+                        "1. CONFIRMAÇÃO POSITIVA ('sim', 'confirmo', 'vou', 'quero'):\n"
+                        "   → Atualize status para CONFIRMED, envie confirmação com detalhes do evento\n"
+                        "2. DÚVIDA/PERGUNTA:\n"
+                        "   → Responda objetivamente e reforce o convite com informação útil\n"
+                        "3. RECUSA DEFINITIVA ('não posso', 'sem interesse'):\n"
+                        "   → Agradeça, registre como DECLINED, abra porta para contato futuro\n"
+                        "4. RECUSA POR AGENDA:\n"
+                        "   → Registre como NO_RESPONSE por ora, sugira follow-up pós-evento\n\n"
+                        "REGRAS:\n"
+                        "- Tom: sempre respeitoso e consultivo\n"
+                        "- Nunca seja insistente com quem recusou definitivamente\n"
+                        "- Personalize a resposta usando o cargo/setor do lead"
+                    ),
+                    sequence_order=1,
+                    is_active=True,
+                ),
+            ]
+            for tpl in prompt_templates:
+                db.add(tpl)
+            logger.info(f"✅ {len(prompt_templates)} prompts de instrução criados no banco (editáveis pelo admin)")
+
+        logger.info("✅ Seed concluído — mensagens personalizadas via Gemini ativas")
 
         await db.commit()
+
+
 
 
 # ── Lifespan ───────────────────────────────────────────────────────────────────
@@ -416,7 +258,7 @@ async def lifespan(app: FastAPI):
     start_scheduler()
 
     logger.info(f"🌍 Ambiente: {settings.app_env}")
-    logger.info(f"🔑 Anthropic configurado: {'Sim' if settings.anthropic_api_key else 'NÃO (configure .env)'}")
+    logger.info(f"🔑 Gemini configurado: {'Sim' if settings._gemini_key else 'NÃO (configure API_KEY_AI no .env)'}")
     logger.info(f"📧 SMTP configurado: {'Sim' if settings.smtp_user else 'NÃO (modo simulado)'}")
     logger.info(f"📱 Twilio configurado: {'Sim' if settings.twilio_account_sid else 'NÃO (modo simulado)'}")
 
@@ -481,7 +323,7 @@ async def health_check():
         content={
             "status": "healthy",
             "environment": settings.app_env,
-            "anthropic_configured": bool(settings.anthropic_api_key),
+            "gemini_configured": bool(settings._gemini_key),
             "smtp_configured": bool(settings.smtp_user),
             "twilio_configured": bool(settings.twilio_account_sid),
         }

@@ -170,6 +170,130 @@ linkedinYesBtn?.addEventListener('click', () => setProfileMode('linkedin'));
 linkedinNoBtn?.addEventListener('click', () => setProfileMode('manual'));
 
 
+// ── LinkedIn AI Preview (auto-fill com debounce) ───────────
+let linkedinDebounceTimer = null;
+let inferredProfile = {};
+
+const linkedinUsernameInput = document.getElementById('linkedin_username');
+
+linkedinUsernameInput?.addEventListener('input', () => {
+  clearFieldError('linkedin_username', 'linkedin-error');
+  const username = linkedinUsernameInput.value.trim();
+
+  _clearLinkedInPreview();
+  clearTimeout(linkedinDebounceTimer);
+
+  // Não faz nada até o usuário digitar algo real
+  if (username.length < 3) {
+    _setLinkedInLoading(false);
+    return;
+  }
+
+  _setLinkedInLoading(true);
+  linkedinDebounceTimer = setTimeout(() => _fetchLinkedInPreview(username), 800);
+});
+
+async function _fetchLinkedInPreview(username) {
+  try {
+    const res = await fetch(`/api/v1/leads/linkedin-preview?username=${encodeURIComponent(username)}`);
+    if (!res.ok) throw new Error('API error');
+    const data = await res.json();
+    _renderLinkedInPreview(data);
+  } catch (_) {
+    // falha silenciosa — não bloqueia o formulário
+  } finally {
+    _setLinkedInLoading(false);
+  }
+}
+
+function _renderLinkedInPreview(data) {
+  inferredProfile = data || {};
+  const card = document.getElementById('linkedin-preview-card');
+  const lowConf = document.getElementById('linkedin-low-confidence');
+
+  if (!card) return;
+
+  // Esconde tudo por padrão
+  card.hidden = true;
+  if (lowConf) lowConf.hidden = true;
+
+  if (!data) return;
+
+  // Confiança baixa: exibe aviso
+  if (data.confidence === 'low' || (!data.role && !data.company)) {
+    if (lowConf) lowConf.hidden = false;
+    return;
+  }
+
+  // Preenche os valores no card
+  const roleEl = document.getElementById('preview-role');
+  const companyEl = document.getElementById('preview-company');
+  const sectorEl = document.getElementById('preview-sector');
+  const badgeEl = document.getElementById('preview-confidence-badge');
+  const sizeEl = document.getElementById('preview-company-size');
+
+  if (roleEl) roleEl.textContent = data.role || '—';
+  if (companyEl) companyEl.textContent = data.company || 'A verificar';
+  if (sectorEl) sectorEl.textContent = data.sector || '—';
+  if (sizeEl) {
+    sizeEl.textContent = data.company_size ? `👥 ${data.company_size} colaboradores` : '';
+    sizeEl.hidden = !data.company_size;
+  }
+
+  if (badgeEl) {
+    // Diferencia a fonte: Apollo (dados reais) vs Gemini (inferência)
+    const isApollo = data.source === 'apollo';
+    const sourceLabel = isApollo ? '🔗 LinkedIn via Apollo' : '⚡ IA detectou';
+    const confLabel = data.confidence === 'high' ? '🟢 Alta confiança' : '🟡 Média confiança';
+    badgeEl.textContent = `${sourceLabel} · ${confLabel}`;
+    badgeEl.style.color = isApollo ? '#34d399' : '#a78bfa';
+  }
+
+  // Se Apollo retornou first_name + last_name, pré-preenche o campo Nome
+  if (data.source === 'apollo' && (data.first_name || data.last_name)) {
+    const nameInput = document.getElementById('name');
+    if (nameInput && !nameInput.value.trim()) {
+      const fullName = [data.first_name, data.last_name].filter(Boolean).join(' ');
+      if (fullName) nameInput.value = fullName;
+    }
+  }
+
+  card.hidden = false;
+  card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+
+function _clearLinkedInPreview() {
+  inferredProfile = {};
+  const card = document.getElementById('linkedin-preview-card');
+  const lowConf = document.getElementById('linkedin-low-confidence');
+  if (card) card.hidden = true;
+  // Esconde o aviso também ao limpar — só deve aparecer após consulta com resposta ruim
+  if (lowConf) lowConf.hidden = true;
+}
+
+function _setLinkedInLoading(show) {
+  const spinner = document.getElementById('linkedin-loading');
+  if (spinner) spinner.hidden = !show;
+
+  // Desativa o botão de envio enquanto a IA está buscando dados do LinkedIn
+  const btn = document.getElementById('submit-btn');
+  if (btn) {
+    if (show) {
+      btn.disabled = true;
+      btn.style.opacity = '0.5';
+      btn.style.cursor = 'not-allowed';
+      btn.title = 'Aguarde a análise do LinkedIn terminar...';
+    } else {
+      btn.disabled = false;
+      btn.style.opacity = '';
+      btn.style.cursor = '';
+      btn.title = '';
+    }
+  }
+}
+
+
 // ── Companion Toggle ───────────────────────────────────────
 const companionSection = document.getElementById('companion-section');
 
@@ -353,9 +477,15 @@ form?.addEventListener('submit', async (e) => {
   }
 
   if (profileMode === 'linkedin') {
-    // Modo LinkedIn: envia somente a URL; o agente busca role, company, sector
+    // Modo LinkedIn: envia a URL + dados inferidos pela IA para classificação
     const username = (document.getElementById('linkedin_username')?.value || '').trim();
     if (username) payload.linkedin_url = `https://www.linkedin.com/in/${username}`;
+
+    // Inclui dados inferidos pela IA — essenciais para classify_lead_eligibility()
+    if (inferredProfile.role) payload.role = inferredProfile.role;
+    if (inferredProfile.company) payload.company = inferredProfile.company;
+    if (inferredProfile.sector) payload.sector = inferredProfile.sector;
+    if (inferredProfile.company_size) payload.company_size = inferredProfile.company_size;
   } else {
     // Modo manual: envia todos os campos profissionais
     payload.role = (document.getElementById('role')?.value || '').trim() || null;

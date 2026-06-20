@@ -1055,3 +1055,138 @@ select option {
   background: #0d1224;
   color: var(--text-primary);
 }
+
+/* ── LinkedIn Spinner ──────────────────────────────────────── */
+.linkedin-spinner {
+  display: none;  /* oculto por padrão — JS usa .hidden = false para exibir */
+  align-items: center;
+  padding: 0 0.6rem;
+  color: var(--blue-glow);
+  flex-shrink: 0;
+}
+
+/* Quando o JS remove o hidden, mostra como flex */
+.linkedin-spinner:not([hidden]) {
+  display: inline-flex;
+}
+
+.linkedin-spinner svg {
+  animation: spin 0.9s linear infinite;
+}
+
+.spin-arc {
+  stroke: currentColor;
+}
+
+/* ── LinkedIn Preview Card ──────────────────────────────────── */
+.linkedin-preview-card {
+  margin-top: 0.85rem;
+  padding: 1rem 1.1rem;
+  background: rgba(59, 130, 246, 0.07);
+  border: 1px solid rgba(59, 130, 246, 0.22);
+  border-radius: var(--radius-md);
+  animation: fadeInUp 0.3s ease;
+}
+
+.preview-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+.preview-header .ai-badge {
+  flex-shrink: 0;
+  margin-top: 0;
+  font-size: 0.68rem;
+}
+
+.preview-confidence {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.preview-fields {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+@media (max-width: 500px) {
+  .preview-fields {
+    grid-template-columns: 1fr;
+  }
+}
+
+.preview-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 0.55rem 0.7rem;
+}
+
+.preview-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+}
+
+.preview-value {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+
+.preview-note {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* ── LinkedIn Low Confidence Notice ─────────────────────────── */
+.linkedin-low-confidence {
+  display: none; /* oculto por padr\u00e3o \u2014 JS remove o [hidden] para exibir */
+  margin-top: 0.7rem;
+  padding: 0.65rem 0.9rem;
+  background: rgba(245, 158, 11, 0.07);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: var(--radius-md);
+  font-size: 0.75rem;
+  color: #fbbf24;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  animation: fadeInUp 0.3s ease;
+}
+
+/* Quando o JS remove o [hidden], exibe como flex */
+.linkedin-low-confidence:not([hidden]) {
+  display: flex;
+}
+
+/* ── Link Button (inline) ───────────────────────────────────── */
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--blue-glow);
+  font-size: inherit;
+  font-family: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color 0.15s;
+}
+
+.link-btn:hover {
+  color: var(--purple-glow);
+}

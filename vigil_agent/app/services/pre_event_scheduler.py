@@ -1,34 +1,28 @@
 """
 Pre-Event Scheduler Service
 ============================
-Régua de comunicação pré-evento com 3 personas:
+Régua de comunicação pré-evento com 3 personas.
+TODAS as mensagens são geradas pelo Gemini 2.5 Flash — sem templates fixos.
 
   Persona A — Participante inscrito (with_companion=False)
-              → Alerta do evento (data, local, agenda)
+              → Lembrete personalizado para o cargo/setor do lead
 
   Persona B — Participante inscrito com acompanhante (with_companion=True)
-              → Alerta do evento + lembrete para ajudar o acompanhante a não esquecer
+              → Lembrete personalizado + nudge para o acompanhante se inscrever
 
   Persona C — Acompanhante ainda não inscrito (is_companion=True, funnel_phase=COMPANION_PENDING)
-              → Lembrete para completar inscrição e garantir a vaga
+              → Urgência para completar inscrição antes de fechar vagas
 
-Os dias de antecedência dos lembretes são configurados pelo admin via `event.pre_event_reminder_days`.
-Cada template tem um campo `days_before_event` que indica em qual janela deve ser disparado.
-O job diário verifica automaticamente quais templates disparam hoje.
+O job diário verifica quantos dias faltam para o evento e dispara as personas corretas.
+Os dias padrão são configurados em `event.pre_event_reminder_days` (default: 30, 15, 7, 3, 1).
 """
 
 import logging
 from datetime import date, datetime, timezone
-from typing import Literal
 
 from sqlalchemy import select
 
 logger = logging.getLogger(__name__)
-
-
-# ── Tipos ─────────────────────────────────────────────────────────────────────
-
-Persona = Literal["participant", "with_companion", "companion_pending"]
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -45,42 +39,48 @@ def _days_until_event(event_date_str: str | None) -> int | None:
         return None
 
 
-def _pick_templates_for_persona(all_templates: list, phase_value: str, days_remaining: int) -> list:
+async def _generate_ai_message(
+    prompt_template: str,
+    prompt_vars: dict,
+    fallback: str,
+) -> str:
     """
-    Filtra templates da persona correta cujo `days_before_event` coincide
-    com os dias restantes. Se não houver template exato, usa o mais próximo.
+    Chama o Gemini para gerar uma mensagem personalizada.
+    Retorna o fallback em caso de falha para garantir continuidade.
     """
-    from app.models.message_template import TemplatePhase
+    import google.generativeai as genai
+    from app.core.config import settings
+    from app.agents.prompts import SYSTEM_BASE
 
-    phase = TemplatePhase(phase_value)
-    candidates = [
-        t for t in all_templates
-        if t.phase == phase and t.is_active
-    ]
+    genai.configure(api_key=settings._gemini_key)
+    model = genai.GenerativeModel(
+        model_name="gemini-3.5-flash",
+        system_instruction=SYSTEM_BASE,
+    )
 
-    # Match exato de dias (preferencial)
-    exact = [t for t in candidates if t.days_before_event == days_remaining]
-    if exact:
-        return sorted(exact, key=lambda t: t.sequence_order)
-
-    # Sem match exato: retorna todos ativos da persona (fallback para broadcast)
-    return sorted(candidates, key=lambda t: t.sequence_order)
+    try:
+        user_prompt = prompt_template.format(**prompt_vars)
+        response = await model.generate_content_async(user_prompt)
+        return response.text.strip()
+    except Exception as e:
+        logger.error(f"[PreEvent/AI] Falha ao gerar mensagem: {e}")
+        return fallback
 
 
 # ── Dispatcher central ────────────────────────────────────────────────────────
 
 async def dispatch_pre_event_for_persona(
-    persona: Persona,
+    persona: str,
     days_remaining: int | None = None,
     force: bool = False,
 ) -> dict:
     """
-    Dispara mensagens pré-evento para uma persona específica.
+    Dispara mensagens pré-evento geradas por IA para uma persona específica.
 
     Args:
         persona: "participant" | "with_companion" | "companion_pending"
         days_remaining: Dias restantes até o evento (None = calculado automaticamente)
-        force: Se True, ignora verificação de `days_before_event` e envia todos os templates ativos
+        force: Se True, ignora verificação de dias configurados e envia para todos os leads
 
     Returns:
         Dict com total_sent, total_failed, leads_processed
@@ -88,10 +88,12 @@ async def dispatch_pre_event_for_persona(
     from app.db.session import AsyncSessionLocal
     from app.models.lead import Lead, FunnelPhase
     from app.models.event import Event, EventStatus
-    from app.models.message_template import MessageTemplate, TemplatePhase, TemplateChannel
-    from app.services.notification import (
-        send_email, send_whatsapp,
-        render_template_vars, build_template_vars,
+    from app.services.notification import send_email, send_whatsapp, format_date_pt
+    from app.agents.prompts import (
+        PRE_EVENT_REMINDER_PARTICIPANT_PROMPT,
+        PRE_EVENT_REMINDER_WITH_COMPANION_PROMPT,
+        PRE_EVENT_REMINDER_COMPANION_PENDING_PROMPT,
+        format_lead_context,
     )
 
     total_sent   = 0
@@ -112,14 +114,6 @@ async def dispatch_pre_event_for_persona(
         if days_remaining is None:
             days_remaining = _days_until_event(event.event_date)
 
-        event_dict = {
-            "name":       event.name,
-            "event_date": event.event_date,
-            "event_time": event.event_time,
-            "location":   event.location,
-            "speakers":   event.speakers or [],
-        }
-
         # Verifica se hoje é um dia de lembrete configurado (exceto em `force`)
         reminder_days = event.pre_event_reminder_days or [30, 15, 7, 3, 1]
         if not force and days_remaining is not None and days_remaining not in reminder_days:
@@ -129,40 +123,14 @@ async def dispatch_pre_event_for_persona(
             )
             return {"total_sent": 0, "total_failed": 0, "leads_processed": []}
 
-        # Mapeia persona → phase + filtro de leads
-        PHASE_MAP: dict[Persona, str] = {
-            "participant":       "pre_event_participant",
-            "with_companion":    "pre_event_with_companion",
-            "companion_pending": "pre_event_companion_pending",
-        }
-        phase_value = PHASE_MAP[persona]
-
-        # Busca templates da persona
-        tpl_result = await db.execute(
-            select(MessageTemplate).where(
-                MessageTemplate.phase == phase_value,
-                MessageTemplate.is_active == True,
-            ).order_by(MessageTemplate.days_before_event, MessageTemplate.sequence_order)
-        )
-        all_templates = tpl_result.scalars().all()
-
-        if not force:
-            # Filtra apenas templates do dia exato
-            templates = [
-                t for t in all_templates
-                if t.days_before_event == days_remaining
-            ]
-            if not templates:
-                logger.info(
-                    f"[PreEvent] Persona={persona} | Nenhum template para {days_remaining} dias restantes"
-                )
-                return {"total_sent": 0, "total_failed": 0, "leads_processed": []}
-        else:
-            templates = list(all_templates)
-
-        if not templates:
-            logger.warning(f"[PreEvent] Nenhum template ativo para persona={persona}")
-            return {"total_sent": 0, "total_failed": 0, "leads_processed": []}
+        # Monta dados do evento para os prompts
+        event_name     = event.name or "Vigil Summit 2026"
+        event_date_pt  = format_date_pt(event.event_date)
+        event_time     = (event.event_time or "A confirmar").replace(":", "h")
+        event_location = event.location or "São Paulo, SP"
+        speakers_str   = ", ".join(event.speakers) if event.speakers else "A confirmar"
+        base_url       = ""  # Pode ser configurado via settings futuramente
+        registration_link = f"{base_url}/#inscricao" if base_url else "vigil.ai/#inscricao"
 
         # Busca leads da persona
         if persona == "participant":
@@ -187,79 +155,162 @@ async def dispatch_pre_event_for_persona(
         leads = leads_result.scalars().all()
 
         logger.info(
-            f"[PreEvent] Persona={persona} | {len(leads)} leads | "
-            f"{len(templates)} template(s) | {days_remaining} dias restantes"
+            f"[PreEvent] Persona={persona} | {len(leads)} lead(s) | "
+            f"{days_remaining} dias restantes | IA gerando mensagens individuais"
         )
 
         for lead in leads:
-            lead_sent = 0
+            lead_sent   = 0
             lead_failed = 0
 
-            lead_dict = {
-                "name":            lead.name,
-                "role":            lead.role,
-                "company":         lead.company,
-                "companion_email": lead.companion_email,
-            }
-            vars_ = build_template_vars(lead_dict, event_dict, days_remaining=days_remaining)
+            try:
+                # Monta contexto do lead para o prompt
+                lead_ctx = format_lead_context({
+                    "name":         lead.name,
+                    "email":        lead.email,
+                    "phone":        lead.phone,
+                    "role":         lead.role or "Não informado",
+                    "company":      lead.company or "Não informada",
+                    "company_size": lead.company_size or "Não informado",
+                    "sector":       lead.sector or "Não informado",
+                    "linkedin_url": lead.linkedin_url or "Não informado",
+                    "status":       lead.status.value if lead.status else "confirmed",
+                    "funnel_phase": lead.funnel_phase.value if lead.funnel_phase else "pre_event",
+                    "qualification_score": lead.qualification_score,
+                })
 
-            for tpl in templates:
-                rendered_body = render_template_vars(tpl.body, vars_)
+                first_name  = lead.name.split()[0] if lead.name else "Participante"
+                days_str    = f"{days_remaining} dia{'s' if days_remaining != 1 else ''}"
 
-                try:
-                    # ── Email ──────────────────────────────────────────────────
-                    if tpl.channel in (TemplateChannel.EMAIL, TemplateChannel.BOTH):
-                        if lead.email:
-                            subject = render_template_vars(
-                                tpl.subject or f"Faltam {{{{DIAS_RESTANTES}}}} para o {{{{NOME_EVENTO}}}}!",
-                                vars_
-                            )
-                            result = await send_email(
-                                email=lead.email,
-                                subject=subject,
-                                body=rendered_body,
-                                lead_id=lead.id,
-                                template_name=tpl.name,
-                            )
-                            lead.communication_log = (lead.communication_log or []) + [{
-                                **result,
-                                "channel":  "email",
-                                "template": tpl.name,
-                                "persona":  persona,
-                                "sent_at":  datetime.now(timezone.utc).isoformat(),
-                            }]
-                            if result.get("status") in ("sent", "simulated"):
-                                lead_sent += 1
-                            else:
-                                lead_failed += 1
+                # ── Gera mensagem via Gemini conforme persona ──────────────
+                if persona == "participant":
+                    body = await _generate_ai_message(
+                        prompt_template=PRE_EVENT_REMINDER_PARTICIPANT_PROMPT,
+                        prompt_vars={
+                            "lead_context":   lead_ctx,
+                            "event_name":     event_name,
+                            "event_date":     event_date_pt,
+                            "event_time":     event_time,
+                            "event_location": event_location,
+                            "speakers":       speakers_str,
+                            "days_remaining": days_str,
+                        },
+                        fallback=(
+                            f"{first_name}, o {event_name} está chegando!\n\n"
+                            f"📅 {event_date_pt} às {event_time} | 📍 {event_location}\n\n"
+                            f"Faltam {days_str}. Reserve na sua agenda!\n\n— Equipe Vigil.AI"
+                        ),
+                    )
+                    subject = f"{first_name}, faltam {days_str} para o {event_name}"
 
-                    # ── WhatsApp ───────────────────────────────────────────────
-                    if tpl.channel in (TemplateChannel.WHATSAPP, TemplateChannel.BOTH):
-                        if lead.phone:
-                            result = await send_whatsapp(
-                                phone=lead.phone,
-                                message=rendered_body,
-                                lead_id=lead.id,
-                                template_name=tpl.name,
-                            )
-                            lead.communication_log = (lead.communication_log or []) + [{
-                                **result,
-                                "channel":  "whatsapp",
-                                "template": tpl.name,
-                                "persona":  persona,
-                                "sent_at":  datetime.now(timezone.utc).isoformat(),
-                            }]
-                            if result.get("status") in ("sent", "simulated"):
-                                lead_sent += 1
-                            else:
-                                lead_failed += 1
+                elif persona == "with_companion":
+                    body = await _generate_ai_message(
+                        prompt_template=PRE_EVENT_REMINDER_WITH_COMPANION_PROMPT,
+                        prompt_vars={
+                            "lead_context":    lead_ctx,
+                            "companion_email": lead.companion_email or "seu acompanhante",
+                            "event_name":      event_name,
+                            "event_date":      event_date_pt,
+                            "event_time":      event_time,
+                            "event_location":  event_location,
+                            "days_remaining":  days_str,
+                        },
+                        fallback=(
+                            f"{first_name}, faltam {days_str} para o {event_name}!\n\n"
+                            f"📅 {event_date_pt} às {event_time} | 📍 {event_location}\n\n"
+                            f"Lembrete: seu acompanhante ({lead.companion_email}) "
+                            f"precisa estar inscrito para garantir a entrada.\n\n— Equipe Vigil.AI"
+                        ),
+                    )
+                    subject = f"{first_name}, faltam {days_str} para o {event_name} — você e seu acompanhante"
 
-                except Exception as e:
-                    logger.error(f"[PreEvent] Erro ao enviar para lead_id={lead.id}: {e}")
-                    lead_failed += 1
+                else:  # companion_pending
+                    # Para companion_pending, busca quem o convidou
+                    inviter_name = "um participante confirmado"
+                    inviter_role = ""
+                    if lead.companion_of_lead_id:
+                        inv_result = await db.execute(
+                            select(Lead).where(Lead.id == lead.companion_of_lead_id)
+                        )
+                        inviter = inv_result.scalar_one_or_none()
+                        if inviter:
+                            inviter_name = inviter.name or inviter_name
+                            inviter_role = inviter.role or ""
+
+                    body = await _generate_ai_message(
+                        prompt_template=PRE_EVENT_REMINDER_COMPANION_PENDING_PROMPT,
+                        prompt_vars={
+                            "companion_email":  lead.email,
+                            "invited_by_name":  inviter_name,
+                            "invited_by_role":  inviter_role,
+                            "registration_link": registration_link,
+                            "event_name":       event_name,
+                            "event_date":       event_date_pt,
+                            "event_time":       event_time,
+                            "days_remaining":   days_str,
+                        },
+                        fallback=(
+                            f"Olá! Você foi convidado(a) para o {event_name} por {inviter_name}.\n\n"
+                            f"Faltam {days_str} e sua inscrição ainda está pendente.\n\n"
+                            f"👉 Inscreva-se: {registration_link}\n\n"
+                            f"📅 {event_date_pt} às {event_time}\n— Equipe Vigil.AI"
+                        ),
+                    )
+                    subject = f"⚠️ Faltam {days_str} — Garanta sua vaga no {event_name}"
+
+                logger.info(
+                    f"[PreEvent/AI] Mensagem gerada | lead_id={lead.id} | "
+                    f"persona={persona} | chars={len(body)}"
+                )
+
+                # ── Envia Email ────────────────────────────────────────────
+                if lead.email:
+                    email_result = await send_email(
+                        email=lead.email,
+                        subject=subject,
+                        body=body,
+                        lead_id=lead.id,
+                        template_name=f"ai_pre_event_{persona}_{days_remaining}d",
+                    )
+                    lead.communication_log = (lead.communication_log or []) + [{
+                        **email_result,
+                        "channel":  "email",
+                        "persona":  persona,
+                        "days_before_event": days_remaining,
+                        "sent_at":  datetime.now(timezone.utc).isoformat(),
+                    }]
+                    if email_result.get("status") in ("sent", "simulated"):
+                        lead_sent += 1
+                    else:
+                        lead_failed += 1
+
+                # ── Envia WhatsApp (cana preferencial para urgência alta) ──
+                if lead.phone and days_remaining is not None and days_remaining <= 7:
+                    wa_body = body[:500] + "\n\n— Equipe Vigil.AI" if len(body) > 500 else body
+                    wa_result = await send_whatsapp(
+                        phone=lead.phone,
+                        message=wa_body,
+                        lead_id=lead.id,
+                        template_name=f"ai_pre_event_{persona}_{days_remaining}d_wa",
+                    )
+                    lead.communication_log = (lead.communication_log or []) + [{
+                        **wa_result,
+                        "channel":  "whatsapp",
+                        "persona":  persona,
+                        "days_before_event": days_remaining,
+                        "sent_at":  datetime.now(timezone.utc).isoformat(),
+                    }]
+                    if wa_result.get("status") in ("sent", "simulated"):
+                        lead_sent += 1
+                    else:
+                        lead_failed += 1
+
+            except Exception as e:
+                logger.error(f"[PreEvent] Erro ao processar lead_id={lead.id}: {e}")
+                lead_failed += 1
 
             lead.last_contacted_at = datetime.now(timezone.utc)
-            lead.contact_attempts = (lead.contact_attempts or 0) + 1
+            lead.contact_attempts  = (lead.contact_attempts or 0) + 1
 
             total_sent   += lead_sent
             total_failed += lead_failed
@@ -278,11 +329,11 @@ async def dispatch_pre_event_for_persona(
         f"sent={total_sent} | failed={total_failed} | leads={len(leads_processed)}"
     )
     return {
-        "persona":          persona,
-        "days_remaining":   days_remaining,
-        "total_sent":       total_sent,
-        "total_failed":     total_failed,
-        "leads_processed":  leads_processed,
+        "persona":         persona,
+        "days_remaining":  days_remaining,
+        "total_sent":      total_sent,
+        "total_failed":    total_failed,
+        "leads_processed": leads_processed,
     }
 
 
@@ -291,11 +342,11 @@ async def dispatch_pre_event_all(
     force: bool = False,
 ) -> dict:
     """
-    Dispara a régua pré-evento para todas as 3 personas.
+    Dispara a régua pré-evento via IA para todas as 3 personas.
     Usado tanto pelo job agendado diário quanto pelo endpoint de broadcast geral.
     """
-    results = []
-    total_sent   = 0
+    results    = []
+    total_sent = 0
     total_failed = 0
 
     for persona in ("participant", "with_companion", "companion_pending"):
@@ -320,9 +371,9 @@ async def dispatch_pre_event_all(
 async def _daily_pre_event_job():
     """
     Job executado diariamente pelo APScheduler.
-    Verifica quais personas precisam de lembrete hoje e dispara.
+    Verifica quais personas precisam de lembrete hoje e dispara via IA.
     """
-    logger.info("📅 [PreEvent] Job diário iniciado")
+    logger.info("📅 [PreEvent] Job diário iniciado — mensagens geradas por Gemini")
     result = await dispatch_pre_event_all(force=False)
     logger.info(
         f"📅 [PreEvent] Job diário concluído | "

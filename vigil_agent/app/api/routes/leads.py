@@ -14,6 +14,13 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.graph import run_funnel_for_lead, run_post_event_for_lead
+from app.agents.prompts import (
+    REGISTRATION_APPROVED_PROMPT,
+    REGISTRATION_PENDING_PROMPT,
+    REGISTRATION_NOT_ELIGIBLE_PROMPT,
+    SYSTEM_BASE,
+    format_lead_context,
+)
 from app.core.security import require_api_key
 from app.db.session import get_db
 from app.models.lead import FunnelPhase, Lead, LeadStatus
@@ -30,10 +37,17 @@ EVENT_CAPACITY = 120
 @router.get(
     "/spots",
     summary="Vagas disponíveis",
-    description="Retorna quantas vagas ainda restam para o evento.",
+    description="Retorna quantas vagas ainda restam para o evento. Leads recusados não ocupam vaga.",
 )
 async def get_available_spots(db: Annotated[AsyncSession, Depends(get_db)]):
-    result = await db.execute(select(func.count()).select_from(Lead))
+    # Conta apenas leads que efetivamente ocupam uma vaga:
+    # exclui not_eligible e out_of_icp (recusados antes ou depois do enriquecimento)
+    EXCLUDED_STATUSES = (LeadStatus.OUT_OF_ICP,)
+    result = await db.execute(
+        select(func.count()).select_from(Lead).where(
+            Lead.status.notin_(EXCLUDED_STATUSES)
+        )
+    )
     total = result.scalar() or 0
     remaining = max(0, EVENT_CAPACITY - total)
     return {
@@ -143,82 +157,153 @@ async def _trigger_funnel(lead: Lead) -> None:
     except Exception as e:
         logger.error(f"[Route] Erro no funil background para lead_id={lead.id}: {e}")
 
-async def _send_confirmation(lead: Lead) -> None:
-    """Envia confirmação imediata de inscrição via email e WhatsApp."""
+async def _send_ai_registration_email(lead, situation: str) -> None:
+    """
+    Gera via Gemini uma mensagem de registro personalizada para o lead.
+    O system prompt é buscado do banco (editável pelo admin) ou usa o fallback hardcoded.
+
+    Args:
+        lead: objeto Lead do banco
+        situation: 'approved' | 'pending' | 'not_eligible'
+    """
+    import google.generativeai as genai
+    from app.core.config import settings
     from app.db.session import AsyncSessionLocal
     from app.models.event import Event
-    from app.models.message_template import MessageTemplate, TemplatePhase
-    from app.services.notification import (
-        notify_lead, NotificationChannel, render_template_vars, build_template_vars
-    )
+    from app.services.notification import send_email, send_whatsapp, format_date_pt
+    from app.agents.graph import _get_phase_system_prompt
     from sqlalchemy import select
 
+    genai.configure(api_key=settings._gemini_key)
+
+    # Busca dados do evento para contextualizar a mensagem
     async with AsyncSessionLocal() as db:
-        # Busca evento ativo
         event_result = await db.execute(select(Event).order_by(Event.id.desc()))
         event = event_result.scalar_one_or_none()
-        event_dict = {
-            "name": event.name if event else "Vigil Summit",
-            "event_date": event.event_date if event else "A confirmar",
-            "event_time": event.event_time if event else "A confirmar",
-            "location": event.location if event else "A confirmar",
-            "speakers": event.speakers if event else [],
-        }
 
-        # Busca template de confirmação
-        tpl_result = await db.execute(
-            select(MessageTemplate).where(
-                MessageTemplate.phase == TemplatePhase.CONFIRMATION,
-                MessageTemplate.is_active == True,
-            ).order_by(MessageTemplate.sequence_order)
+    event_name     = event.name     if event else "Vigil Summit 2026"
+    event_date_raw = event.event_date if event else "A confirmar"
+    event_time     = (event.event_time or "A confirmar").replace(":", "h") if event else "A confirmar"
+    event_location = event.location if event else "São Paulo, SP"
+    event_date_pt  = format_date_pt(event_date_raw)
+
+    # Monta lista de palestrantes para incluir no contexto
+    speakers = event.speakers if event and event.speakers else []
+    speakers_str = "\n- ".join(speakers) if speakers else "A confirmar"
+
+    # Monta o contexto do lead
+    lead_ctx = format_lead_context({
+        "name":         lead.name,
+        "email":        lead.email,
+        "phone":        lead.phone,
+        "role":         lead.role or "Não informado",
+        "company":      lead.company or "Não informada",
+        "company_size": lead.company_size or "Não informado",
+        "sector":       lead.sector or "Não informado",
+        "linkedin_url": lead.linkedin_url or "Não informado",
+        "status":       situation,
+        "funnel_phase": "capture",
+        "qualification_score": lead.qualification_score,
+    })
+
+    # Contexto de evento formatado para o Gemini
+    event_ctx = (
+        f"Evento: {event_name}\n"
+        f"Data: {event_date_pt}\n"
+        f"Horário: {event_time}\n"
+        f"Local: {event_location}\n"
+        f"Palestrantes confirmados:\n- {speakers_str}"
+    )
+
+    # Prompts padrão por situação (fallback caso admin não tenha editado no painel)
+    fallback_prompts = {
+        "approved":     REGISTRATION_APPROVED_PROMPT.format(
+            lead_context=lead_ctx,
+            event_name=event_name,
+            event_date=event_date_pt,
+            event_time=event_time,
+            event_location=event_location,
+        ),
+        "pending":      REGISTRATION_PENDING_PROMPT.format(
+            lead_context=lead_ctx,
+            event_name=event_name,
+            event_date=event_date_pt,
+        ),
+        "not_eligible": REGISTRATION_NOT_ELIGIBLE_PROMPT.format(
+            lead_context=lead_ctx,
+            event_name=event_name,
+        ),
+    }
+
+    # Busca system prompt do banco (editável pelo admin) com fallback hardcoded
+    # Todos os casos de confirmação usam phase='confirmation' — a situação é passada no user_message
+    system_prompt = await _get_phase_system_prompt(
+        phase="confirmation",
+        fallback=fallback_prompts[situation],
+    )
+
+    # Subjects personalizados por situação
+    first_name = lead.name.split()[0] if lead.name else "Participante"
+    subject_map = {
+        "approved":     f"✅ {first_name}, sua vaga no {event_name} está confirmada!",
+        "pending":      f"Recebemos sua inscrição para o {event_name} — {first_name}",
+        "not_eligible": f"Sua inscrição para o {event_name} — {first_name}",
+    }
+    subject = subject_map[situation]
+
+    # Instrução de geração passada como user_message ao Gemini
+    user_message = (
+        f"Gere a mensagem de confirmação para lead com situação '{situation.upper()}'.\n\n"
+        f"PERFIL DO LEAD:\n{lead_ctx}\n\n"
+        f"DADOS DO EVENTO:\n{event_ctx}\n\n"
+        f"Gere a mensagem final agora, sem cabeçalho nem comentários extras."
+    )
+
+    # Gera o corpo da mensagem com Gemini
+    try:
+        model = genai.GenerativeModel(
+            model_name="gemini-3.5-flash",
+            system_instruction=f"{SYSTEM_BASE}\n\n{system_prompt}",
         )
-        tpl = tpl_result.scalar_one_or_none()
-
-        if not tpl:
-            logger.warning(f"[Confirmation] Nenhum template de confirmação encontrado para lead_id={lead.id}")
-            return
-
-        vars_ = build_template_vars(
-            {"name": lead.name, "role": lead.role, "company": lead.company},
-            event_dict,
+        response = await model.generate_content_async(user_message)
+        body = response.text.strip()
+        logger.info(
+            f"[RegistrationAI] Mensagem gerada | lead_id={lead.id} | "
+            f"situation={situation} | chars={len(body)}"
         )
-        body = render_template_vars(tpl.body, vars_)
-        subject = render_template_vars(tpl.subject or "Confirmação de Inscrição", vars_)
+    except Exception as e:
+        logger.error(f"[RegistrationAI] Falha no Gemini para lead_id={lead.id}: {e}")
+        # Fallback minimal em caso de falha da IA
+        body = (
+            f"{first_name}, recebemos seu cadastro para o {event_name}.\n\n"
+            f"Você receberá mais informações em breve por email.\n\n"
+            f"— Equipe Vigil.AI"
+        )
 
-        log_entries = []
+    # Envia email
+    await send_email(
+        email=lead.email,
+        subject=subject,
+        body=body,
+        lead_id=lead.id,
+        template_name=f"ai_registration_{situation}",
+    )
 
-        # Envia email
-        if lead.email:
-            result = await notify_lead(
-                lead_id=lead.id,
-                channel=NotificationChannel.EMAIL,
-                message=body,
-                subject=subject,
-                email=lead.email,
-                template_name=tpl.name,
-            )
-            log_entries.append({**result, "channel": "email", "sent_at": result.get("sent_at")})
+    # Envia WhatsApp se tiver telefone (apenas para aprovados e pendentes)
+    if lead.phone and situation in ("approved", "pending"):
+        # Versão resumida para WhatsApp (máx ~500 chars para legibilidade)
+        wa_body = body[:500] + "\n\n— Equipe Vigil.AI" if len(body) > 500 else body
+        await send_whatsapp(
+            phone=lead.phone,
+            message=wa_body,
+            lead_id=lead.id,
+            template_name=f"ai_registration_{situation}_wa",
+        )
 
-        # Envia WhatsApp
-        if lead.phone:
-            result = await notify_lead(
-                lead_id=lead.id,
-                channel=NotificationChannel.WHATSAPP,
-                message=body,
-                phone=lead.phone,
-                template_name=tpl.name,
-            )
-            log_entries.append({**result, "channel": "whatsapp", "sent_at": result.get("sent_at")})
+    logger.info(
+        f"[RegistrationAI] Notificações enviadas | lead_id={lead.id} | situation={situation}"
+    )
 
-        # Salva log
-        if log_entries:
-            result = await db.execute(select(Lead).where(Lead.id == lead.id))
-            db_lead = result.scalar_one_or_none()
-            if db_lead:
-                db_lead.communication_log = (db_lead.communication_log or []) + log_entries
-                await db.commit()
-
-    logger.info(f"[Confirmation] Confirmação enviada para lead_id={lead.id}")
 
 
 async def _send_companion_invite(lead: Lead) -> None:
@@ -319,45 +404,6 @@ async def _create_companion_lead(lead: Lead) -> None:
     )
 
 
-async def _send_not_eligible_email(lead: Lead) -> None:
-    """
-    Envia email de cortesia para leads classificados como 'not_eligible'.
-    Tom respeitoso — informa que o evento é exclusivo sem ser grosseiro.
-    O lead NÃO é apagado; permanece como out_of_icp para futuros contatos.
-    """
-    from app.services.notification import send_email
-
-    first_name = lead.name.split()[0] if lead.name else "prezado(a)"
-    subject = "Recebemos sua inscrição para o Vigil Summit 2026"
-    body = (
-        f"Olá, {first_name}!\n\n"
-        f"Agradecemos seu interesse no Vigil Summit 2026 — Segurança para a Era da IA.\n\n"
-        f"O Vigil Summit é um evento exclusivo para líderes de Tecnologia, Segurança da "
-        f"Informação e Gestão de Riscos de médias e grandes empresas. Ao analisarmos sua "
-        f"inscrição, identificamos que o perfil cadastrado (cargo: {lead.role or 'não informado'}) "
-        f"não se enquadra no público-alvo desta edição.\n\n"
-        f"Isso não impede que você acompanhe nossas iniciativas futuras! Manteremos seu "
-        f"contato em nossa base e entraremos em contato caso surjam oportunidades "
-        f"alinhadas ao seu perfil.\n\n"
-        f"Caso acredite que houve algum engano ou deseje complementar suas informações, "
-        f"responda este email.\n\n"
-        f"Obrigado pela compreensão e até uma próxima oportunidade!\n"
-        f"— Equipe Vigil.AI"
-    )
-
-    result = await send_email(
-        email=lead.email,
-        subject=subject,
-        body=body,
-        lead_id=lead.id,
-        template_name="not_eligible_courtesy",
-    )
-    logger.info(
-        f"[NotEligible] Email de cortesia enviado para lead_id={lead.id} | "
-        f"status={result.get('status')}"
-    )
-
-
 
 @router.post(
     "/",
@@ -420,7 +466,7 @@ async def create_lead(
     if eligibility == "approved":
         # Perfil executivo claro → funil roda normalmente
         lead.status = LeadStatus.NEW
-        background_tasks.add_task(_send_confirmation, lead)
+        background_tasks.add_task(_send_ai_registration_email, lead, "approved")
         background_tasks.add_task(_trigger_funnel, lead)
         if lead.with_companion and lead.companion_email:
             background_tasks.add_task(_send_companion_invite, lead)
@@ -431,20 +477,99 @@ async def create_lead(
         lead.status = LeadStatus.PENDING_REVIEW
         lead.funnel_phase = FunnelPhase.CAPTURE
         # Envia confirmação de recebimento (sem confirmar participação)
-        background_tasks.add_task(_send_confirmation, lead)
+        background_tasks.add_task(_send_ai_registration_email, lead, "pending")
         # NÃO dispara funil — admin aprova primeiro
 
     else:  # not_eligible
-        # Sem perfil adequado → email de cortesia, sem acesso ao evento
+        # Sem perfil adequado → mensagem de cortesia via IA
         lead.status = LeadStatus.OUT_OF_ICP
         lead.funnel_phase = FunnelPhase.CLOSED
-        background_tasks.add_task(_send_not_eligible_email, lead)
+        background_tasks.add_task(_send_ai_registration_email, lead, "not_eligible")
 
     await db.commit()
     await db.refresh(lead)
 
     logger.info(f"[Route] Lead criado: id={lead.id} | email={lead.email} | eligibility={eligibility}")
     return lead
+
+
+@router.get(
+    "/linkedin-preview",
+    summary="Enriquecer perfil via Gemini (conhecimento de treinamento)",
+    description="Gemini usa seu conhecimento sobre pessoas e empresas para enriquecer o perfil.",
+)
+async def linkedin_preview(username: str = Query(..., min_length=2, description="Username do LinkedIn")):
+    """
+    Usa Gemini 2.5 Flash para identificar a pessoa pelo username do LinkedIn.
+    O modelo usa seu conhecimento de treinamento sobre pessoas públicas e empresas
+    para retornar cargo, empresa, setor e headcount estimado.
+    """
+    import json as _json
+    import google.generativeai as genai
+    from app.core.config import settings
+
+    genai.configure(api_key=settings._gemini_key)
+
+    model = genai.GenerativeModel(
+        # gemini-3.5-flash: 1.500 req/dia grátis (vs 20/dia do 3.5-flash)
+        model_name="gemini-3.5-flash",
+        generation_config={"response_mime_type": "application/json"},
+    )
+
+    prompt = f"""Você é um especialista em dados profissionais brasileiros com amplo conhecimento sobre executivos, empreendedores e empresas do Brasil.
+
+Dado o username do LinkedIn: '{username}' (https://www.linkedin.com/in/{username}/)
+
+TAREFA:
+1. Tente identificar QUEM é essa pessoa com base no seu conhecimento de treinamento
+   - Usernames frequentemente contêm nome + sobrenome ou partes do nome real
+   - Algumas pessoas públicas (fundadores, executivos, influenciadores de negócios) aparecem em seu treinamento
+   - Ex: "ramontpalomo" → Ramon Thurler Palomo, Sócio-Fundador da Pareto AI, empresa de IA brasileira
+   - Ex: "bill-gates" → Bill Gates, co-fundador da Microsoft
+
+2. Com base na pessoa identificada ou na empresa mencionada no username:
+   - Extraia/infira o cargo atual
+   - Identifique a empresa
+   - Estime o número de colaboradores usando seu conhecimento sobre a empresa
+   - Classifique o setor
+
+REGRAS:
+- Se reconhecer claramente a pessoa → confidence "high"
+- Se só tem pistas parciais (ex: nome+empresa no username) → confidence "medium"  
+- Se for um username genérico sem pistas (ex: "user123", "joaosilva") → confidence "low", todos campos null
+- NÃO invente dados. Se não tiver certeza, retorne null para o campo
+- company_size: use "1-10", "11-50", "51-200", "201-500", "501-1000", "1001-5000", "5001-10000" ou "10000+"
+
+Retorne SOMENTE este JSON:
+{{
+  "source": "gemini_knowledge",
+  "confidence": "low|medium|high",
+  "first_name": "primeiro nome ou null",
+  "last_name": "sobrenome ou null",
+  "role": "cargo atual em português ou null",
+  "company": "nome da empresa ou null",
+  "sector": "Tecnologia|Financeiro|Saúde|Varejo|Governo|Energia|Indústria|Outro ou null",
+  "company_size": "faixa de colaboradores ou null"
+}}"""
+
+    try:
+        resp = await model.generate_content_async(prompt)
+        data = _json.loads(resp.text)
+        data["source"] = "gemini_knowledge"
+        logger.info(
+            f"[Gemini Knowledge] ✅ username='{username}' → "
+            f"role={data.get('role')!r} | company={data.get('company')!r} | "
+            f"size={data.get('company_size')} | confidence={data.get('confidence')}"
+        )
+        return data
+    except Exception as e:
+        logger.error(f"[LinkedInPreview] Erro para username='{username}': {e}")
+        return {
+            "source": "error", "confidence": "low",
+            "role": None, "company": None, "sector": None,
+            "company_size": None, "first_name": None,
+        }
+
 
 
 @router.get(

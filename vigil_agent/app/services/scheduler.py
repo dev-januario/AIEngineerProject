@@ -107,126 +107,92 @@ def stop_scheduler():
 async def _dispatch_post_event_sequence():
     """
     Job executado após encerramento do evento.
-    Envia mensagens personalizadas com base na presença do lead:
-      - attended=True  → templates POST_EVENT_ATTENDED (agradecimento)
-      - attended!=True → templates POST_EVENT_NO_SHOW  (conforto / sentimos sua falta)
-      - fallback       → templates POST_EVENT genéricos
+    Gera mensagens pós-evento personalizadas via Gemini para cada lead:
+      - attended=True  → mensagem de agradecimento e follow-up consultivo
+      - attended!=True → mensagem de conforto e re-engajamento
+    Nenhum template fixo é usado — a IA gera texto único para cada perfil.
     """
     from app.db.session import AsyncSessionLocal
     from app.models.lead import Lead, FunnelPhase, LeadStatus
-    from app.models.event import Event, EventStatus
-    from app.models.message_template import MessageTemplate, TemplatePhase, TemplateChannel
-    from app.services.notification import (
-        send_email, send_whatsapp, NotificationChannel,
-        render_template_vars, build_template_vars
-    )
+    from app.agents.graph import run_post_event_for_lead
     from sqlalchemy import select
 
-    logger.info("🔔 [Scheduler] Disparando régua pós-evento personalizada...")
+    logger.info("🔔 [Scheduler] Disparando régua pós-evento via Gemini (mensagens personalizadas)...")
 
     async with AsyncSessionLocal() as db:
-        # Busca evento encerrado (ou ativo como fallback)
-        event_result = await db.execute(
-            select(Event).where(Event.status == EventStatus.ENDED).order_by(Event.ended_at.desc())
-        )
-        event = event_result.scalar_one_or_none()
-        if not event:
-            event_result = await db.execute(select(Event).order_by(Event.id.desc()))
-            event = event_result.scalar_one_or_none()
-
-        event_dict = {
-            "name": event.name if event else "Vigil Summit",
-            "event_date": event.event_date if event else None,
-            "event_time": event.event_time if event else None,
-            "location": event.location if event else None,
-            "speakers": event.speakers if event else [],
-        } if event else {}
-
-        # Carrega todos os templates pós-evento de uma só vez
-        tpl_result = await db.execute(
-            select(MessageTemplate).where(
-                MessageTemplate.phase.in_([
-                    TemplatePhase.POST_EVENT,
-                    TemplatePhase.POST_EVENT_ATTENDED,
-                    TemplatePhase.POST_EVENT_NO_SHOW,
-                ]),
-                MessageTemplate.is_active == True,
-            ).order_by(MessageTemplate.sequence_order)
-        )
-        all_templates = tpl_result.scalars().all()
-
-        attended_tpls = [t for t in all_templates if t.phase == TemplatePhase.POST_EVENT_ATTENDED][:1]
-        no_show_tpls  = [t for t in all_templates if t.phase == TemplatePhase.POST_EVENT_NO_SHOW][:1]
-        generic_tpls  = [t for t in all_templates if t.phase == TemplatePhase.POST_EVENT][:1]
-
-        if not all_templates:
-            logger.warning("[Scheduler] Nenhum template pós-evento encontrado")
-            return
-
-        # Busca todos os leads não-fechados
+        # Busca leads elegíveis para follow-up pós-evento
         leads_result = await db.execute(
             select(Lead).where(
                 Lead.funnel_phase.in_([
                     FunnelPhase.PRE_EVENT, FunnelPhase.POST_EVENT,
                     FunnelPhase.CAPTURE, FunnelPhase.ENRICHMENT,
-                ])
+                ]),
+                Lead.status.notin_([LeadStatus.OUT_OF_ICP]),
             )
         )
         leads = leads_result.scalars().all()
-        logger.info(f"[Scheduler] Pós-evento para {len(leads)} leads")
+        logger.info(f"[Scheduler] Pós-evento via IA para {len(leads)} leads")
+
+        sent = 0
+        failed = 0
 
         for lead in leads:
             try:
-                # Seleciona templates conforme presença confirmada via QR Code
-                if lead.attended is True:
-                    templates = attended_tpls or generic_tpls
-                    persona = "presente"
-                else:
-                    templates = no_show_tpls or generic_tpls
-                    persona = "ausente"
+                lead_dict = {
+                    "id": lead.id,
+                    "email": lead.email,
+                    "name": lead.name,
+                    "phone": lead.phone,
+                    "role": lead.role,
+                    "company": lead.company,
+                    "company_size": lead.company_size,
+                    "sector": lead.sector,
+                    "linkedin_url": lead.linkedin_url,
+                    "enrichment_data": lead.enrichment_data,
+                    "qualification_score": lead.qualification_score,
+                    "status": lead.status.value,
+                    "funnel_phase": lead.funnel_phase.value,
+                    "contact_attempts": lead.contact_attempts or 0,
+                    "communication_log": lead.communication_log or [],
+                    "attended": lead.attended,
+                    "event_notes": lead.event_notes,
+                }
 
-                if not templates:
-                    logger.warning(f"[Scheduler] Nenhum template para lead_id={lead.id} ({persona})")
-                    continue
+                attended = lead.attended is True
+                event_notes = lead.event_notes or ""
 
-                lead_dict = {"name": lead.name, "role": lead.role, "company": lead.company}
-                vars_ = build_template_vars(lead_dict, event_dict)
+                # Gemini gera mensagem única baseada no perfil do lead
+                final_state = await run_post_event_for_lead(
+                    lead=lead_dict,
+                    attended=attended,
+                    event_notes=event_notes,
+                )
 
-                for tpl in templates:
-                    rendered_body = render_template_vars(tpl.body, vars_)
-
-                    if tpl.channel in (TemplateChannel.EMAIL, TemplateChannel.BOTH):
-                        if lead.email:
-                            subject = render_template_vars(tpl.subject or "Vigil Summit — Follow-up", vars_)
-                            result = await send_email(
-                                email=lead.email, subject=subject,
-                                body=rendered_body, lead_id=lead.id, template_name=tpl.name,
-                            )
-                            lead.communication_log = (lead.communication_log or []) + [{
-                                **result, "channel": "email", "template": tpl.name,
-                                "sent_at": datetime.now(timezone.utc).isoformat(),
-                            }]
-
-                    if tpl.channel in (TemplateChannel.WHATSAPP, TemplateChannel.BOTH):
-                        if lead.phone:
-                            result = await send_whatsapp(
-                                phone=lead.phone, message=rendered_body,
-                                lead_id=lead.id, template_name=tpl.name,
-                            )
-                            lead.communication_log = (lead.communication_log or []) + [{
-                                **result, "channel": "whatsapp", "template": tpl.name,
-                                "sent_at": datetime.now(timezone.utc).isoformat(),
-                            }]
-
+                # Atualiza estado do lead no banco
                 lead.funnel_phase = FunnelPhase.POST_EVENT
+                lead.status = LeadStatus.FOLLOWED_UP
                 lead.last_contacted_at = datetime.now(timezone.utc)
-                logger.info(f"[Scheduler] Pós-evento — lead_id={lead.id} | presença={persona}")
+                comm = final_state.get("communication_log") or []
+                if comm:
+                    lead.communication_log = (lead.communication_log or []) + [comm[-1]]
+
+                persona = "presente" if attended else "ausente"
+                logger.info(
+                    f"[Scheduler/AI] ✅ Pós-evento gerado | lead_id={lead.id} | "
+                    f"persona={persona} | ação={final_state.get('last_action', '')[:60]}"
+                )
+                sent += 1
 
             except Exception as e:
                 logger.error(f"[Scheduler] Erro pós-evento lead_id={lead.id}: {e}")
+                failed += 1
 
         await db.commit()
-        logger.info("✅ [Scheduler] Régua pós-evento personalizada concluída")
+        logger.info(
+            f"✅ [Scheduler] Régua pós-evento concluída | "
+            f"sent={sent} | failed={failed}"
+        )
+
 
 
 def schedule_post_event(delay_minutes: int = 3, run_at: datetime | None = None):

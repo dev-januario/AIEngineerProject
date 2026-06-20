@@ -1,20 +1,22 @@
 """
 Enrichment Service
 ==================
-Responsável por enriquecer o perfil do lead com dados públicos antes de qualquer contato.
+Responsável por enriquecer o perfil do lead com inferências inteligentes via Gemini 2.5 Flash.
 
-Em produção, integraria com APIs como:
-- Hunter.io (verificação de email principal)
-- Clearbit (cargo, tamanho da empresa)
-- LinkedIn Sales Navigator (presença e atividade profissional)
+O Gemini analisa os dados disponíveis (nome, email, empresa, cargo, LinkedIn) e retorna
+um perfil enriquecido com dados realistas inferidos do seu conhecimento de mercado:
+- Cargo real e nível de senioridade
+- Tamanho e setor real da empresa (inferido do domínio corporativo)
+- Tópicos de segurança relevantes para aquele perfil
+- Score e tier de qualificação ICP
+- Hooks de personalização específicos para cada lead
 
-Para este case, implementamos um serviço mock inteligente que simula o enriquecimento
-e demonstra a lógica de qualificação de leads B2B para o Vigil Summit.
+Em caso de falha da IA (timeout, quota, etc.), cai num fallback determinístico
+que usa os dados disponíveis para calcular score sem inventar informações.
 """
 
-import asyncio
+import json
 import logging
-import random
 from datetime import datetime
 
 from app.core.config import settings
@@ -22,9 +24,49 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 
-# ── Qualificação ──────────────────────────────────────────────────────────────
+# ── Regras de Elegibilidade (determinísticas, sem IA) ─────────────────────────
 
-# Cargos alvo do Vigil Summit (executivos de segurança e TI)
+_AUTO_APPROVED_ACRONYMS = {"ciso", "cto", "cio", "coo"}
+
+_AUTO_APPROVED_KEYWORDS = [
+    "chief", "vp ", "vice-president", "vice president",
+    "diretor", "director",
+    "head de", "head of",
+    "risk manager", "gestor de risco", "gestora de risco",
+]
+
+_PENDING_REVIEW_KEYWORDS = [
+    "gerente", "manager",
+    "coordenador", "coordinator",
+    "especialista", "specialist",
+    "consultor", "consultant",
+    "analista sênior", "senior analyst",
+    "analista senior",
+    "engenheiro sênior", "senior engineer",
+    "arquiteto", "architect",
+]
+
+_TECH_SECURITY_AREA_KEYWORDS = [
+    "segurança", "security", "tecnologia", "technology", "ti ", "it ",
+    "cibersegurança", "cybersecurity", "cyber",
+    "risco", "risk", "compliance", "informação", "information",
+    "dados", "data", "infraestrutura", "infrastructure",
+    "cloud", "devops", "devsecops", "soc", "siem",
+]
+
+# Setores com alta propensão à segurança digital
+HIGH_VALUE_SECTORS = {
+    "financeiro": 1.0,
+    "saúde": 0.95,
+    "governo": 0.90,
+    "energia": 0.88,
+    "telecom": 0.85,
+    "varejo": 0.75,
+    "indústria": 0.72,
+    "tecnologia": 0.80,
+}
+
+# Cargos alvo do Vigil Summit
 TARGET_ROLES = {
     "ciso": 1.0,
     "cto": 0.95,
@@ -39,95 +81,46 @@ TARGET_ROLES = {
     "chief technology officer": 0.95,
 }
 
-# ── Regras de Elegibilidade (determinísticas, sem IA) ─────────────────────────
-
-# Cargos que aprovam automaticamente — liderança executiva de TI/Segurança/Risco
-# Siglas curtas são verificadas como PALAVRAS COMPLETAS (word boundary) para evitar
-# falsos positivos: ex. 'coo' dentro de 'coordenador', 'cio' dentro de 'associação'.
-_AUTO_APPROVED_ACRONYMS = {"ciso", "cto", "cio", "coo"}
-
-_AUTO_APPROVED_KEYWORDS = [
-    "chief", "vp ", "vice-president", "vice president",
-    "diretor", "director",
-    "head de", "head of",
-    "risk manager", "gestor de risco", "gestora de risco",
-]
-
-# Cargos que entram em revisão manual — perfil intermediário, pode ou não ser elegível
-_PENDING_REVIEW_KEYWORDS = [
-    "gerente", "manager",
-    "coordenador", "coordinator",
-    "especialista", "specialist",
-    "consultor", "consultant",
-    "analista sênior", "senior analyst",
-    "analista senior",
-    "engenheiro sênior", "senior engineer",
-    "arquiteto", "architect",
-]
-
-# Palavras-chave que indicam área relevante (TI, Segurança, Risco, Compliance)
-_TECH_SECURITY_AREA_KEYWORDS = [
-    "segurança", "security", "tecnologia", "technology", "ti ", "it ",
-    "cibersegurança", "cybersecurity", "cyber",
-    "risco", "risk", "compliance", "informação", "information",
-    "dados", "data", "infraestrutura", "infrastructure",
-    "cloud", "devops", "devSecOps", "soc", "siem",
-]
-
 
 def classify_lead_eligibility(role: str | None) -> str:
     """
     Classifica o lead de forma determinística com base no cargo declarado.
+    Rodada ANTES do enriquecimento por IA para decisão imediata no cadastro.
 
     Retorna:
         "approved"       → cargo de liderança executiva, entra direto no funil
-        "pending_review" → cargo intermediário com área relevante, aguarda validação do admin
-        "not_eligible"   → cargo sem relação com TI/Segurança/Risco ou perfil incompatível
-
-    Essa função é síncrona e roda antes do enriquecimento assíncrono por IA.
+        "pending_review" → cargo intermediário com área relevante, aguarda validação
+        "not_eligible"   → cargo sem relação com TI/Segurança/Risco
     """
     if not role or not role.strip():
-        # Sem cargo declarado → vai para revisão manual (benefício da dúvida)
         return "pending_review"
 
     role_lower = role.strip().lower()
 
-    # 1. Aprovação automática: verifica siglas como palavras completas (evita substring bugs)
+    # Aprovação: siglas como palavras completas (evita substring em "coordenador")
     role_words = set(role_lower.replace("-", " ").replace("/", " ").replace("(", " ").replace(")", " ").split())
     if role_words & _AUTO_APPROVED_ACRONYMS:
         return "approved"
 
-    # 1b. Aprovação automática: cargo executivo por keyword substring
+    # Aprovação: keywords executivas
     for keyword in _AUTO_APPROVED_KEYWORDS:
         if keyword in role_lower:
             return "approved"
 
-    # 2. Revisão manual: cargo intermediário + área relevante
+    # Revisão manual: intermediário + área relevante
     is_intermediate = any(kw in role_lower for kw in _PENDING_REVIEW_KEYWORDS)
     is_relevant_area = any(kw in role_lower for kw in _TECH_SECURITY_AREA_KEYWORDS)
 
     if is_intermediate and is_relevant_area:
         return "pending_review"
 
-    # 3. Cargo relevante mas não executivo e não claramente intermediário → revisão
     if is_relevant_area:
         return "pending_review"
 
-    # 4. Sem relação com a área → não elegível
     return "not_eligible"
 
-# Setores com alta propensão à segurança digital
-HIGH_VALUE_SECTORS = {
-    "financeiro": 1.0,
-    "saúde": 0.95,
-    "governo": 0.90,
-    "energia": 0.88,
-    "telecom": 0.85,
-    "varejo": 0.75,
-    "indústria": 0.72,
-    "tecnologia": 0.80,
-}
 
+# ── Score helpers (usados no fallback) ───────────────────────────────────────
 
 def _score_role(role: str | None) -> float:
     if not role:
@@ -143,8 +136,7 @@ def _score_company_size(size: str | None) -> float:
     if not size:
         return 0.5
     try:
-        # Aceita formatos: "500", "500-1000", "1000+"
-        number = int(size.replace("+", "").split("-")[0].strip())
+        number = int(size.replace("+", "").split("-")[0].strip().replace("<", "").replace(">", ""))
         if number >= 1000:
             return 1.0
         elif number >= 500:
@@ -152,7 +144,7 @@ def _score_company_size(size: str | None) -> float:
         elif number >= 200:
             return 0.75
         else:
-            return 0.3  # Abaixo do perfil alvo (200+ funcionários)
+            return 0.3
     except (ValueError, AttributeError):
         return 0.5
 
@@ -175,126 +167,21 @@ def calculate_qualification_score(
 ) -> float:
     """
     Calcula score de qualificação (0.0 - 1.0) baseado no perfil ICP da Vigil.AI.
-    
+    Usado como fallback quando o Gemini não está disponível.
+
     Pesos:
-    - Cargo: 40%  (proxy de poder de decisão)
-    - Tamanho da empresa: 35%  (critério mínimo: 200 funcionários)
-    - Setor: 20%  (setores com maior exposição a risco digital)
-    - LinkedIn ativo: 5%  (sinal de engajamento profissional)
+    - Cargo: 40%
+    - Tamanho da empresa: 35%
+    - Setor: 20%
+    - LinkedIn ativo: 5%
     """
-    role_score = _score_role(role) * 0.40
-    size_score = _score_company_size(company_size) * 0.35
-    sector_score = _score_sector(sector) * 0.20
+    role_score    = _score_role(role) * 0.40
+    size_score    = _score_company_size(company_size) * 0.35
+    sector_score  = _score_sector(sector) * 0.20
     linkedin_score = 0.05 if has_linkedin else 0.0
 
     final = role_score + size_score + sector_score + linkedin_score
     return round(min(final, 1.0), 3)
-
-
-# ── Mock Data ─────────────────────────────────────────────────────────────────
-
-MOCK_COMPANIES = {
-    "techcorp": {"size": "500-1000", "sector": "Tecnologia", "revenue": "R$ 50M-100M"},
-    "banco": {"size": "1000+", "sector": "Financeiro", "revenue": "R$ 500M+"},
-    "saúde": {"size": "200-500", "sector": "Saúde", "revenue": "R$ 20M-50M"},
-    "energy": {"size": "1000+", "sector": "Energia", "revenue": "R$ 200M+"},
-}
-
-SECURITY_TOPICS = [
-    "Zero Trust Architecture",
-    "LGPD & Privacidade de Dados",
-    "Threat Intelligence",
-    "Cloud Security",
-    "Ransomware Prevention",
-    "SOC & SIEM",
-    "Gestão de Identidade (IAM)",
-    "Segurança em IA/ML",
-]
-
-
-async def enrich_lead_profile(
-    email: str,
-    name: str,
-    company: str | None,
-    role: str | None,
-    company_size: str | None,
-    sector: str | None,
-    linkedin_url: str | None,
-) -> dict:
-    """
-    Enriquece o perfil do lead com dados públicos.
-    
-    Simula latência de APIs externas (~1-2s) e retorna dados estruturados
-    para alimentar o agente de personalização de mensagens.
-    """
-    logger.info(f"[Enrichment] Iniciando enriquecimento para {email}")
-
-    # Simula chamada async a APIs externas
-    await asyncio.sleep(random.uniform(0.5, 1.5))
-
-    # Inferência de dados da empresa a partir do email/nome
-    domain = email.split("@")[-1] if "@" in email else ""
-    inferred_company = company or domain.split(".")[0].title()
-
-    # Busca dados simulados ou usa valores fornecidos
-    mock_key = next(
-        (k for k in MOCK_COMPANIES if k in (inferred_company or "").lower()), None
-    )
-    company_data = MOCK_COMPANIES.get(mock_key, {})
-
-    enriched_size = company_size or company_data.get("size", "500-1000")
-    enriched_sector = sector or company_data.get("sector", "Tecnologia")
-    enriched_role = role or "Diretor de TI"
-
-    # Tópicos de segurança de interesse (inferidos do setor)
-    security_interests = random.sample(SECURITY_TOPICS, k=random.randint(2, 4))
-
-    # Verificação de presença no LinkedIn
-    linkedin_active = linkedin_url is not None and len(linkedin_url) > 10
-
-    # Score de qualificação final
-    score = calculate_qualification_score(
-        role=enriched_role,
-        company_size=enriched_size,
-        sector=enriched_sector,
-        has_linkedin=linkedin_active,
-    )
-
-    enrichment_result = {
-        "enriched_at": datetime.utcnow().isoformat(),
-        "source": "mock_enrichment_v1",
-        "company": {
-            "name": inferred_company,
-            "domain": domain,
-            "size": enriched_size,
-            "sector": enriched_sector,
-            "estimated_revenue": company_data.get("revenue", "Não disponível"),
-        },
-        "professional": {
-            "role": enriched_role,
-            "seniority_level": _infer_seniority(enriched_role),
-            "decision_maker": score >= 0.75,
-            "linkedin_active": linkedin_active,
-        },
-        "security_interests": security_interests,
-        "qualification": {
-            "score": score,
-            "tier": _score_to_tier(score),
-            "fits_icp": score >= 0.60,
-            "reason": _explain_score(enriched_role, enriched_size, enriched_sector),
-        },
-        "personalization_hooks": _generate_hooks(
-            name=name,
-            role=enriched_role,
-            sector=enriched_sector,
-            interests=security_interests,
-        ),
-    }
-
-    logger.info(
-        f"[Enrichment] {email} → score={score:.2f}, tier={enrichment_result['qualification']['tier']}"
-    )
-    return enrichment_result
 
 
 def _infer_seniority(role: str) -> str:
@@ -329,18 +216,185 @@ def _explain_score(role: str | None, size: str | None, sector: str | None) -> st
     return "Lead qualificado: " + ", ".join(parts) if parts else "Lead em análise"
 
 
-def _generate_hooks(
-    name: str, role: str, sector: str, interests: list[str]
+# ── Fallback (sem IA) ─────────────────────────────────────────────────────────
+
+_FALLBACK_SECURITY_TOPICS = [
+    "Zero Trust Architecture",
+    "LGPD & Privacidade de Dados",
+    "Threat Intelligence",
+    "Cloud Security",
+    "Ransomware Prevention",
+    "SOC & SIEM",
+    "Gestão de Identidade (IAM)",
+    "Segurança em IA/ML",
+]
+
+_SECTOR_INTERESTS = {
+    "financeiro":  ["LGPD & Privacidade de Dados", "Compliance Regulatório", "Threat Intelligence", "Gestão de Identidade (IAM)"],
+    "saúde":       ["LGPD & Privacidade de Dados", "Ransomware Prevention", "Cloud Security", "Gestão de Vulnerabilidades"],
+    "governo":     ["Zero Trust Architecture", "Incident Response", "Gestão de Identidade (IAM)", "Segurança em OT/ICS"],
+    "energia":     ["Segurança em OT/ICS", "Incident Response", "Zero Trust Architecture", "Threat Intelligence"],
+    "telecom":     ["SOC & SIEM", "Zero Trust Architecture", "Cloud Security", "Gestão de Identidade (IAM)"],
+    "tecnologia":  ["Cloud Security", "Segurança em IA/ML", "Zero Trust Architecture", "Gestão de Vulnerabilidades"],
+}
+
+
+def _fallback_enrichment(
+    email: str,
+    name: str,
+    company: str | None,
+    role: str | None,
+    company_size: str | None,
+    sector: str | None,
+    linkedin_url: str | None,
 ) -> dict:
-    """Gera ganchos de personalização para uso nos prompts do agente."""
-    first_name = name.split()[0]
+    """Enriquecimento fallback usando apenas dados disponíveis + scores calculados."""
+    domain = email.split("@")[-1] if "@" in email else ""
+    inferred_company = company or domain.split(".")[0].title()
+    enriched_size   = company_size or "200-500"
+    enriched_sector = sector or "Tecnologia"
+    enriched_role   = role or "Profissional de TI"
+    linkedin_active = linkedin_url is not None and len(linkedin_url) > 10
+
+    score = calculate_qualification_score(
+        role=enriched_role,
+        company_size=enriched_size,
+        sector=enriched_sector,
+        has_linkedin=linkedin_active,
+    )
+
+    sector_lower    = enriched_sector.lower()
+    interests       = _SECTOR_INTERESTS.get(sector_lower, _FALLBACK_SECURITY_TOPICS[:3])
+    first_name      = name.split()[0] if name else "Participante"
     primary_interest = interests[0] if interests else "cibersegurança"
+
     return {
-        "first_name": first_name,
-        "role_context": f"como {role} no setor de {sector}",
-        "primary_pain": f"os desafios de {primary_interest}",
-        "event_value_prop": (
-            f"o Vigil Summit traz especialistas que vão debater {primary_interest} "
-            f"com foco em empresas do setor {sector}"
-        ),
+        "enriched_at": datetime.utcnow().isoformat(),
+        "source": "fallback_deterministic_v2",
+        "company": {
+            "name": inferred_company,
+            "domain": domain,
+            "size": enriched_size,
+            "sector": enriched_sector,
+            "estimated_revenue": "Não disponível",
+        },
+        "professional": {
+            "role": enriched_role,
+            "seniority_level": _infer_seniority(enriched_role),
+            "decision_maker": score >= 0.75,
+            "linkedin_active": linkedin_active,
+        },
+        "security_interests": interests,
+        "qualification": {
+            "score": score,
+            "tier": _score_to_tier(score),
+            "fits_icp": score >= 0.60,
+            "reason": _explain_score(enriched_role, enriched_size, enriched_sector),
+        },
+        "personalization_hooks": {
+            "first_name": first_name,
+            "role_context": f"como {enriched_role} no setor de {enriched_sector}",
+            "primary_pain": f"os desafios de {primary_interest}",
+            "event_value_prop": (
+                f"o Vigil Summit traz especialistas que vão debater {primary_interest} "
+                f"com foco em empresas do setor {enriched_sector}"
+            ),
+        },
     }
+
+
+# ── Enriquecimento principal via Gemini ───────────────────────────────────────
+
+async def enrich_lead_profile(
+    email: str,
+    name: str,
+    company: str | None,
+    role: str | None,
+    company_size: str | None,
+    sector: str | None,
+    linkedin_url: str | None,
+) -> dict:
+    """
+    Enriquece o perfil do lead via Gemini 2.5 Flash (JSON mode).
+
+    O Gemini recebe os dados disponíveis e infere informações realistas baseadas no
+    seu conhecimento de mercado: tamanho real da empresa pelo domínio corporativo,
+    setor, tópicos de segurança relevantes e score de qualificação ICP.
+
+    Em caso de falha da IA, usa o fallback determinístico para garantir continuidade.
+    """
+    import google.generativeai as genai
+    from app.agents.prompts import ENRICHMENT_AI_PROMPT
+
+    logger.info(f"[Enrichment/Gemini] Iniciando para {email}")
+
+    # Prepara dados para o prompt
+    email_domain     = email.split("@")[-1] if "@" in email else "desconhecido"
+    linkedin_username = ""
+    if linkedin_url:
+        if "/in/" in linkedin_url:
+            linkedin_username = linkedin_url.split("/in/")[-1].strip("/")
+        else:
+            linkedin_username = linkedin_url.strip()
+
+    prompt = ENRICHMENT_AI_PROMPT.format(
+        name=name,
+        email=email,
+        email_domain=email_domain,
+        company=company or "Não informada",
+        role=role or "Não informado",
+        company_size=company_size or "Não informado",
+        sector=sector or "Não informado",
+        linkedin_username=linkedin_username or "Não informado",
+    )
+
+    try:
+        genai.configure(api_key=settings._gemini_key)
+        model = genai.GenerativeModel(
+            model_name="gemini-3.5-flash",
+            generation_config={"response_mime_type": "application/json"},
+        )
+
+        response = await model.generate_content_async(prompt)
+        raw_text = response.text.strip()
+
+        # Remove possíveis markdown fences se o modelo ainda os retornar
+        if raw_text.startswith("```"):
+            raw_text = raw_text.split("```")[-2] if "```" in raw_text[3:] else raw_text[7:]
+        raw_text = raw_text.strip()
+
+        enrichment_raw = json.loads(raw_text)
+
+        # Garante que todos os campos obrigatórios existem
+        enrichment_result = {
+            "enriched_at": datetime.utcnow().isoformat(),
+            "source": "gemini_enrichment_v1",
+            "company":              enrichment_raw.get("company", {}),
+            "professional":         enrichment_raw.get("professional", {}),
+            "security_interests":   enrichment_raw.get("security_interests", []),
+            "qualification":        enrichment_raw.get("qualification", {}),
+            "personalization_hooks": enrichment_raw.get("personalization_hooks", {}),
+        }
+
+        # Garante que linkedin_active reflete a realidade
+        enrichment_result["professional"]["linkedin_active"] = bool(linkedin_username)
+
+        score = enrichment_result["qualification"].get("score", 0.0)
+        tier  = enrichment_result["qualification"].get("tier", "D")
+        fits  = enrichment_result["qualification"].get("fits_icp", False)
+
+        logger.info(
+            f"[Enrichment/Gemini] ✅ {email} | "
+            f"empresa={enrichment_result['company'].get('name')} | "
+            f"setor={enrichment_result['company'].get('sector')} | "
+            f"score={score:.2f} | tier={tier} | fits_icp={fits}"
+        )
+        return enrichment_result
+
+    except json.JSONDecodeError as e:
+        logger.warning(f"[Enrichment/Gemini] JSON inválido para {email}: {e} → usando fallback")
+        return _fallback_enrichment(email, name, company, role, company_size, sector, linkedin_url)
+
+    except Exception as e:
+        logger.error(f"[Enrichment/Gemini] Falha para {email}: {e} → usando fallback")
+        return _fallback_enrichment(email, name, company, role, company_size, sector, linkedin_url)
