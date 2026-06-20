@@ -59,7 +59,7 @@ class Settings(BaseSettings):
 
     # Admin Panel JWT
     admin_jwt_secret: str = "vigil-admin-secret-change-in-production"
-    admin_jwt_expire_minutes: int = 1  # TODO: aumentar para 8h em produção (admin_jwt_expire_hours)
+    admin_jwt_expire_minutes: int = 5
     admin_default_user: str = "admin"
     admin_default_password: str = "vigil2026"
 
