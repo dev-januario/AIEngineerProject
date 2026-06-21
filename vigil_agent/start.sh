@@ -37,7 +37,7 @@ echo ""
 # Limpa variáveis do SO que possam conflitar com o .env
 # (exportadas manualmente em sessões anteriores)
 unset TWILIO_ACCOUNT_SID TWILIO_AUTH_TOKEN TWILIO_WHATSAPP_FROM
-unset ANTHROPIC_API_KEY
+unset API_KEY_AI
 unset SMTP_HOST SMTP_PORT SMTP_USER SMTP_PASSWORD EMAIL_FROM EMAIL_FROM_NAME
 unset DATABASE_URL
 unset SECRET_KEY ADMIN_DEFAULT_PASSWORD ADMIN_DEFAULT_USER
@@ -47,11 +47,11 @@ echo ""
 
 # Verifica configurações críticas lendo direto do .env
 TWILIO_SID=$(grep "^TWILIO_ACCOUNT_SID=" "$ENV_FILE" | cut -d= -f2 | tr -d '"' | tr -d "'")
-ANTHROPIC=$(grep "^ANTHROPIC_API_KEY=" "$ENV_FILE" | cut -d= -f2 | tr -d '"' | tr -d "'")
+GEMINI_KEY=$(grep "^API_KEY_AI=" "$ENV_FILE" | cut -d= -f2 | tr -d '"' | tr -d "'")
 SMTP=$(grep "^SMTP_USER=" "$ENV_FILE" | cut -d= -f2 | tr -d '"' | tr -d "'")
 
 echo "🔑 Configurações detectadas no .env:"
-echo "   Anthropic : ${ANTHROPIC:0:15}..."
+echo "   Gemini    : ${GEMINI_KEY:0:15}..."
 echo "   Twilio SID: ${TWILIO_SID:0:10}..."
 echo "   SMTP user : $SMTP"
 echo ""

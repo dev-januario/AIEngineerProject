@@ -281,7 +281,7 @@ do evento **Vigil Summit — Segurança para a Era da IA**.
 
 ### Fases do Funil
 1. **Captura** — Recebe leads via formulário/landing page
-2. **Enriquecimento** — Qualifica automaticamente com dados públicos (Claude 3.5 Sonnet)
+2. **Enriquecimento** — Qualifica automaticamente com dados públicos (Gemini 3.5 Flash)
 3. **Pré-Evento** — Confirmação proativa via WhatsApp/Email (meta: >70% show rate)
 4. **Pós-Evento** — Follow-up personalizado para agendar reunião comercial
 

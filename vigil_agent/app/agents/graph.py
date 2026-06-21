@@ -262,7 +262,7 @@ async def node_send_pre_event(state: AgentState) -> AgentState:
     preferred_channel = "whatsapp" if state["lead_phone"] else "email"
 
     if attempts == 0:
-        # Convite inicial: Claude gera mensagem personalizada
+        # Convite inicial: Gemini gera mensagem personalizada
         prompt = PRE_EVENT_INITIAL_PROMPT.format(
             lead_context=lead_ctx,
             enrichment_context=enrichment_ctx,
@@ -328,7 +328,7 @@ async def node_send_pre_event(state: AgentState) -> AgentState:
 async def node_process_response(state: AgentState) -> AgentState:
     """
     Nó 4: Processa resposta inbound do lead.
-    Usa Claude para interpretar a intenção e atualizar o status.
+    Usa Gemini para interpretar a intenção e atualizar o status.
     """
     inbound = state.get("inbound_message", "")
     lead_id = state["lead_id"]
@@ -368,7 +368,7 @@ async def node_process_response(state: AgentState) -> AgentState:
             user_message=f'Analise a resposta e determine a intenção: "{inbound}"',
         )
 
-        # Interpretação heurística simples + análise do Claude
+        # Interpretação heurística simples + análise do Gemini
         inbound_lower = inbound.lower()
         if any(w in inbound_lower for w in ["sim", "confirmo", "vou", "quero", "ok", "aceito"]):
             new_status = "confirmed"
@@ -585,7 +585,7 @@ async def run_funnel_for_lead(lead: dict) -> AgentState:
     Ponto de entrada principal para processar um lead pelo funil.
 
     Args:
-        lead: Dicionário com dados do lead (vem do modelo Lead do PostgreSQL)
+        lead: Dicionário com dados do lead (vem do modelo Lead do MySQL)
 
     Returns:
         Estado final do agente após processamento.

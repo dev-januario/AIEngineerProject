@@ -13,7 +13,7 @@ from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
 
-# SQLite em memória para testes (sem dependência de PostgreSQL)
+# SQLite em memória para testes (sem dependência de MySQL)
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
 test_engine = create_async_engine(

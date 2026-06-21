@@ -64,7 +64,7 @@ class Lead(Base):
     linkedin_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     # ── Enrichment ────────────────────────────────────────────────────────────
-    # JSONB-equivalent (JSON for SQLite compat in tests, JSONB preferred in Postgres)
+    # JSON column (JSON for SQLite compat in tests, native JSON in MySQL)
     enrichment_data: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     qualification_score: Mapped[float | None] = mapped_column(Float, nullable=True)
 
