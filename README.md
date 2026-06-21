@@ -1,5 +1,3 @@
-<![CDATA[<div align="center">
-
 # 🛡️ Vigil.AI — Autonomous Funnel Agent
 
 ### Agente de IA Autônomo para Conversão de Leads Executivos
@@ -1234,4 +1232,3 @@ ports:
 Vigil.AI © 2026 · [Documentação da API](http://localhost:8000/docs)
 
 </div>
-]]>
