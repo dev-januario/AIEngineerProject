@@ -10,23 +10,25 @@
 POST /api/v1/leads/
        │
        ▼
-  [FastAPI] ──► [PostgreSQL]
+  [FastAPI] ──► [MySQL 8.4]
        │
        ▼ (background task)
-  [LangGraph Agent]
+  [Gemini AI — Qualificação & Enriquecimento]
        │
-       ├── node_enrich_lead ────► [Enrichment Service] ──► Score ICP
+       ├── classify_lead_eligibility ──► Approved / Pending Review / Not Eligible
        │
-       ├── node_score_and_route ─► Qualificado? ──┬── Sim ──► pre_event
-       │                                          └── Não ──► closed
+       ├── enrich_lead_profile ────────► Score ICP + Dados Inferidos
        │
-       ├── node_send_pre_event ──► [Notification Service]
-       │                               ├── WhatsApp (Twilio)
-       │                               └── Email (SendGrid)
+       ├── _send_ai_registration_email ► Email de confirmação via Gemini AI
        │
-       ├── node_process_response ─► Inbound via webhook
-       │
-       └── node_send_post_event ──► Follow-up personalizado (Claude)
+       └── [LangGraph Agent]
+              ├── node_enrich_lead
+              ├── node_score_and_route
+              ├── node_send_pre_event ──► [Notification Service]
+              │                              ├── WhatsApp (Twilio)
+              │                              └── Email (SMTP/Gmail)
+              ├── node_process_response ► Inbound via webhook
+              └── node_send_post_event ► Follow-up personalizado (Gemini)
 ```
 
 ### Stack Tecnológico
@@ -34,11 +36,13 @@ POST /api/v1/leads/
 | Camada | Tecnologia | Justificativa |
 |---|---|---|
 | **API** | FastAPI (async) | Alto throughput, geração automática de docs, DI nativa |
-| **Banco** | PostgreSQL + SQLAlchemy Async | ACID, JSONB para dados dinâmicos, suporte a Alembic |
+| **Banco** | MySQL 8.4 + SQLAlchemy Async | ACID, suporte a JSON, contêiner Docker pronto |
 | **Orquestração IA** | LangGraph | Grafo de estado determinístico com ramificações condicionais |
-| **LLM** | Claude 3.5 Sonnet (Anthropic) | Superior em reasoning, seguimento de instruções e tool use |
+| **LLM** | Gemini 3.5 Flash (Google) | Modelo gratuito com bom reasoning e grounding |
+| **Email** | SMTP via Gmail App Password | Envio direto sem dependência de serviço externo |
+| **WhatsApp** | Twilio Sandbox | Envio via API REST com fallback simulado |
 | **Migrações** | Alembic | Versionamento de schema, rollback seguro |
-| **Testes** | Pytest + HTTPX | Testes assíncronos sem necessidade de PostgreSQL real |
+| **Testes** | Pytest + HTTPX | Testes assíncronos com SQLite em memória |
 
 ---
 
@@ -50,35 +54,43 @@ POST /api/v1/leads/
 cd vigil_agent
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r ../requirements.txt
 ```
 
 ### 2. Configurar variáveis de ambiente
 
 ```bash
-cp .env.example .env
-# Edite o .env e adicione sua ANTHROPIC_API_KEY
+cp ../.env.example ../.env
+# Edite o .env e adicione suas chaves:
+# - API_KEY_AI (Google Gemini)
+# - SMTP_USER / SMTP_PASSWORD (Gmail App Password)
+# - TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN (opcional, para WhatsApp)
 ```
 
-### 3. Subir PostgreSQL com Docker
+### 3. Subir MySQL com Docker
 
 ```bash
-docker compose up -d
+docker compose -f ../docker-compose.yml up -d
 ```
 
-### 4. Rodar migrações
+### 4. Validar banco de dados
 
 ```bash
-alembic upgrade head
+python ../scripts/validate_db.py
 ```
 
 ### 5. Iniciar o servidor
 
 ```bash
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+bash start.sh
+# Ou diretamente:
+# uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Acesse a documentação interativa em: **http://localhost:8000/docs**
+Acesse:
+- **Landing Page:** http://localhost:8000/
+- **Dashboard Admin:** http://localhost:8000/admin/login.html
+- **API Docs:** http://localhost:8000/docs
 
 ---
 
@@ -104,49 +116,47 @@ curl -X POST http://localhost:8000/api/v1/leads/ \
 ### Listar leads (requer API Key)
 ```bash
 curl http://localhost:8000/api/v1/leads/ \
-  -H "X-API-Key: vigil-internal-api-key-2024"
+  -H "X-API-Key: vigil-internal-api-key-2026"
 ```
 
-### Registrar presença e disparar follow-up pós-evento
+### Painel Administrativo (JWT)
 ```bash
-curl -X POST "http://localhost:8000/api/v1/leads/1/post-event?attended=true&event_notes=Interesse+em+Zero+Trust" \
-  -H "X-API-Key: vigil-internal-api-key-2024"
-```
+# Login → retorna JWT
+curl -X POST http://localhost:8000/api/v1/admin/auth/login \
+  -d "username=admin&password=vigil2026"
 
-### Simular resposta inbound do lead (webhook)
-```bash
-curl -X POST http://localhost:8000/api/v1/webhooks/inbound \
+# Listar leads pendentes
+curl http://localhost:8000/api/v1/admin/leads?pending_only=true \
+  -H "Authorization: Bearer <token>"
+
+# Aprovar lead manualmente
+curl -X POST http://localhost:8000/api/v1/admin/leads/1/qualify \
+  -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
-  -d '{
-    "lead_email": "carlos@techcorp.com.br",
-    "channel": "whatsapp",
-    "message": "Confirmo minha presença!"
-  }'
+  -d '{"action": "approve", "notes": "Perfil validado"}'
 ```
 
 ---
 
 ## 🤖 Fases do Funil
 
-### Fase 1 — Captura
+### Fase 1 — Captura & Qualificação Imediata
 - Lead registrado via `POST /api/v1/leads/`
 - Validação de dados e consentimento LGPD
-- Trigger automático para enriquecimento
+- **Qualificação determinística** por cargo →
+  - `approved`: CISOs, CTOs, Diretores, VPs, Fundadores → confirmação imediata
+  - `pending_review`: Gerentes, Coordenadores, Especialistas → aguarda aprovação do admin
+  - `not_eligible`: Cargos fora do ICP → email de cortesia
 
 ### Fase 2 — Enriquecimento (IA)
-- Busca dados públicos: cargo, porte, setor, presença LinkedIn
-- Calcula **score ICP** (0.0 – 1.0):
-  - Cargo: 40% (CISO/CTO = máximo)
-  - Porte da empresa: 35% (200+ funcionários)
-  - Setor: 20% (Financeiro, Saúde, Governo = máximo)
-  - LinkedIn ativo: 5%
+- Gemini analisa os dados disponíveis e retorna perfil enriquecido
+- Calcula **score ICP** (0.0 – 1.0)
 - Leads com score < 0.60 são arquivados automaticamente
 
 ### Fase 3 — Engajamento Pré-Evento
-- **Claude gera mensagens 100% personalizadas** com base no perfil enriquecido
-- Sequência de até 3 tentativas (7 dias de intervalo)
-- Canal preferencial: WhatsApp (se phone disponível) → Email
-- Respostas processadas via webhook → agente interpreta e responde
+- **Gemini gera mensagens personalizadas** com base no perfil enriquecido
+- Disparo multicanal: Email (SMTP) + WhatsApp (Twilio)
+- Régua de 3 personas: Participante solo / c/ acompanhante / acompanhante pendente
 
 ### Fase 4 — Follow-up Pós-Evento
 - **Presentes**: mensagem referenciando algo do evento + proposta de reunião
@@ -157,7 +167,9 @@ curl -X POST http://localhost:8000/api/v1/webhooks/inbound \
 ## 🧪 Executar Testes
 
 ```bash
-# Todos os testes (usando SQLite em memória — sem PostgreSQL necessário)
+cd vigil_agent
+
+# Todos os testes (usando SQLite em memória — sem MySQL necessário)
 pytest
 
 # Com cobertura
@@ -168,6 +180,12 @@ pytest tests/test_api.py -v
 
 # Apenas testes do agente
 pytest tests/test_agent.py -v
+
+# Testes de serviços (notification, enrichment)
+pytest tests/test_services.py -v
+
+# Testes do admin
+pytest tests/test_admin.py -v
 ```
 
 ---
@@ -181,6 +199,7 @@ pytest tests/test_agent.py -v
 | Intervalo entre tentativas | 7 dias |
 | Meta de show rate | > 70% |
 | Canal padrão | WhatsApp (com fallback para Email) |
+| Vagas disponíveis | 120 (exclui `out_of_icp` da contagem) |
 
 ---
 
@@ -188,16 +207,8 @@ pytest tests/test_agent.py -v
 
 - Consentimento explícito obrigatório no registro (`lgpd_consent: true`)
 - Data de consentimento armazenada (`consent_at`)
-- Dados de enriquecimento usam apenas fontes públicas
-- Possibilidade de exclusão por email (não implementado nesta versão)
-
----
-
-## 📧 Acesso de Teste
-
-Para testes da equipe Pareto, o email `ramon@pareto.io` pode ser usado como lead de teste.
-
-**API Key de teste**: `vigil-internal-api-key-2024`
+- Dados de enriquecimento usam apenas fontes públicas e IA generativa
+- Acompanhantes limitados a vínculos profissionais
 
 ---
 
@@ -209,6 +220,6 @@ Para escalar para **10 eventos simultâneos com 10.000 participantes**:
 2. **Multi-tenancy**: adicionar campo `event_id` nas entidades
 3. **Rate limiting**: por canal de notificação (WhatsApp tem limites da API Twilio)
 4. **Cache de enriquecimento**: Redis com TTL de 24h para evitar re-enriquecimento
-5. **Observabilidade**: LangSmith para tracing de chamadas ao Claude, Prometheus + Grafana
+5. **Observabilidade**: Prometheus + Grafana para monitoramento de chamadas ao Gemini
 
 O grafo LangGraph é stateless por design — escala horizontalmente sem refatoração.

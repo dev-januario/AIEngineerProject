@@ -1,7 +1,7 @@
 """
 Enrichment Service
 ==================
-Responsável por enriquecer o perfil do lead com inferências inteligentes via Gemini 2.5 Flash.
+Responsável por enriquecer o perfil do lead com inferências inteligentes via Gemini 3.5 Flash.
 
 O Gemini analisa os dados disponíveis (nome, email, empresa, cargo, LinkedIn) e retorna
 um perfil enriquecido com dados realistas inferidos do seu conhecimento de mercado:
@@ -33,6 +33,12 @@ _AUTO_APPROVED_KEYWORDS = [
     "diretor", "director",
     "head de", "head of",
     "risk manager", "gestor de risco", "gestora de risco",
+    # Fundadores e sócios são decisores máximos
+    "fundador", "co-fundador", "cofundador", "founder", "co-founder",
+    "sócio", "socio", "partner",
+    "presidente", "president",
+    "proprietário", "proprietario", "owner",
+    "ceo", "cfo",
 ]
 
 _PENDING_REVIEW_KEYWORDS = [
@@ -52,6 +58,9 @@ _TECH_SECURITY_AREA_KEYWORDS = [
     "risco", "risk", "compliance", "informação", "information",
     "dados", "data", "infraestrutura", "infrastructure",
     "cloud", "devops", "devsecops", "soc", "siem",
+    # Desenvolvimento de software também é área técnica relevante
+    "software", "dev", "desenvolvimento", "engineer", "engenheiro",
+    "sistemas", "system", "digital",
 ]
 
 # Setores com alta propensão à segurança digital

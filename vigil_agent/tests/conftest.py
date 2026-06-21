@@ -1,7 +1,7 @@
 """
 Test Fixtures & Configuration
 ==============================
-Setup do ambiente de testes com SQLite assíncrono (sem necessidade de PostgreSQL).
+Setup do ambiente de testes com SQLite assíncrono (sem necessidade de MySQL).
 """
 
 import pytest
@@ -88,3 +88,39 @@ def sample_lead_payload_no_consent():
         "email": "ana.lima@empresa.com",
         "lgpd_consent": False,
     }
+
+
+@pytest_asyncio.fixture(scope="session", autouse=True)
+async def seed_test_data(setup_database):
+    """Cria admin user e evento padrão no banco de testes (como faz o main.py no startup)."""
+    from passlib.context import CryptContext
+    from app.core.config import settings
+    from app.models.admin_user import AdminUser
+    from app.models.event import Event, EventStatus
+
+    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+    async with TestAsyncSession() as db:
+        # Admin padrão
+        admin = AdminUser(
+            username=settings.admin_default_user,
+            hashed_password=pwd_context.hash(settings.admin_default_password),
+            full_name="Administrador Vigil",
+            is_active=True,
+        )
+        db.add(admin)
+
+        # Evento padrão
+        event = Event(
+            name="Vigil Summit — Segurança para a Era da IA",
+            event_date="2026-07-15",
+            event_time="09:00",
+            location="São Paulo, SP — A confirmar",
+            description="Evento de teste",
+            speakers=["Speaker Teste"],
+            status=EventStatus.ACTIVE,
+            post_event_delay_minutes=3,
+        )
+        db.add(event)
+
+        await db.commit()

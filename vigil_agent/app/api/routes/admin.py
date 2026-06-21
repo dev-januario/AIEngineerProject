@@ -455,7 +455,7 @@ async def qualify_lead(
             lead.event_notes = (lead.event_notes or "") + f"\n[Admin aprovou: {payload.notes}]"
         await db.flush()
 
-        # Importa helpers de leads para não duplicar lógica
+        # Importa helpers de leads
         from app.api.routes.leads import _send_confirmation, _trigger_funnel, _send_companion_invite, _create_companion_lead
         background_tasks.add_task(_send_confirmation, lead)
         background_tasks.add_task(_trigger_funnel, lead)

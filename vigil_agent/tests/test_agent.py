@@ -223,7 +223,7 @@ class TestPromptFormatters:
 # ── Agent Graph ───────────────────────────────────────────────────────────────
 
 class TestAgentNodes:
-    """Testa nós individuais do grafo LangGraph (sem Claude real)."""
+    """Testa nós individuais do grafo LangGraph (sem Gemini real)."""
 
     @pytest.mark.asyncio
     async def test_node_enrich_lead(self):

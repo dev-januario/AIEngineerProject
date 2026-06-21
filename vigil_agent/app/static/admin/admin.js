@@ -386,9 +386,14 @@ function renderLeads(leads) {
   const tbody = document.getElementById('leads-tbody');
   const thead = document.getElementById('leads-thead');
   const isMeeting = currentFilter === 'meeting_booked';
+  const isPending = currentFilter === 'pending_review';
 
   // Cabeçalho dinâmico
-  if (isMeeting) {
+  if (isPending) {
+    thead.innerHTML = `<tr>
+      <th>NOME</th><th>EMAIL</th><th>EMPRESA</th><th>CARGO</th><th>STATUS</th><th>INSCRITO EM</th><th>AÇÕES</th>
+    </tr>`;
+  } else if (isMeeting) {
     thead.innerHTML = `<tr>
       <th>NOME</th><th>EMAIL</th><th>EMPRESA</th><th>CARGO</th><th>STATUS</th><th>AGENDADA PARA</th><th>INSCRITO EM</th>
     </tr>`;
@@ -399,11 +404,33 @@ function renderLeads(leads) {
   }
 
   if (!leads.length) {
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--text-muted)">Nenhum participante encontrado.</td></tr>`;
+    const msg = isPending
+      ? 'Nenhuma inscrição pendente de análise.'
+      : 'Nenhum participante encontrado.';
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--text-muted)">${msg}</td></tr>`;
     return;
   }
 
   tbody.innerHTML = leads.map(l => {
+    if (isPending) {
+      return `<tr>
+        <td class="lead-name">${escapeHtml(l.name)}</td>
+        <td>${escapeHtml(l.email)}</td>
+        <td>${escapeHtml(l.company || '—')}</td>
+        <td>${escapeHtml(l.role || '—')}</td>
+        <td><span class="status-badge status-${l.status}">${l.status.replace(/_/g, ' ')}</span></td>
+        <td>${new Date(l.created_at).toLocaleDateString('pt-BR')}</td>
+        <td class="lead-actions">
+          <button class="action-btn action-approve" onclick="approveLead(${l.id}, '${escapeHtml(l.name)}')" title="Aprovar inscrição">
+            ✅ Concluir
+          </button>
+          <button class="action-btn action-reject" onclick="rejectLead(${l.id}, '${escapeHtml(l.name)}')" title="Rejeitar inscrição">
+            ❌ Rejeitar
+          </button>
+        </td>
+      </tr>`;
+    }
+
     const col6 = isMeeting
       ? escapeHtml(l.last_contacted_at ? new Date(l.last_contacted_at).toLocaleString('pt-BR') : '—')
       : (l.with_companion ? '✅' : '—');
@@ -421,6 +448,48 @@ function renderLeads(leads) {
 
 function escapeHtml(str) {
   return String(str || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+
+// ── Approve / Reject Leads ─────────────────────────────────
+async function approveLead(leadId, name) {
+  const notes = prompt(`Aprovar inscrição de ${name}?\n\nObservação (opcional):`);
+  if (notes === null) return; // cancelou
+  try {
+    const result = await api('POST', `/admin/leads/${leadId}/qualify`, {
+      action: 'approve',
+      notes: notes || null,
+    });
+    showToast(`✅ ${name} aprovado! Email de confirmação enviado.`);
+    loadLeads();
+    // Mantém o filtro ativo
+    const pendingBtn = document.querySelector('[data-filter="pending_review"]');
+    if (pendingBtn && currentFilter === 'pending_review') {
+      setTimeout(() => filterLeads('pending_review', pendingBtn), 300);
+    }
+  } catch (e) {
+    showToast(`Erro ao aprovar: ${e.message}`, 'error');
+  }
+}
+
+async function rejectLead(leadId, name) {
+  const notes = prompt(`Rejeitar inscrição de ${name}?\n\nMotivo (opcional):`);
+  if (notes === null) return; // cancelou
+  if (!confirm(`⚠️ Confirma a REJEIÇÃO de ${name}?\n\nUm email de cortesia será enviado.`)) return;
+  try {
+    const result = await api('POST', `/admin/leads/${leadId}/qualify`, {
+      action: 'reject',
+      notes: notes || null,
+    });
+    showToast(`❌ ${name} rejeitado. Email de cortesia enviado.`);
+    loadLeads();
+    const pendingBtn = document.querySelector('[data-filter="pending_review"]');
+    if (pendingBtn && currentFilter === 'pending_review') {
+      setTimeout(() => filterLeads('pending_review', pendingBtn), 300);
+    }
+  } catch (e) {
+    showToast(`Erro ao rejeitar: ${e.message}`, 'error');
+  }
 }
 
 

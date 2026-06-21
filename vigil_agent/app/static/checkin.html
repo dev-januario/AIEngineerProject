@@ -118,6 +118,30 @@
             font-weight: 600;
         }
 
+        .display-manual-link {
+            margin-top: 2rem;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .display-manual-link .link-label {
+            margin-bottom: 0.5rem;
+        }
+
+        .display-url-box {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(167, 139, 250, 0.3);
+            border-radius: 10px;
+            padding: 0.55rem 1.25rem;
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--purple-glow);
+            letter-spacing: 0.01em;
+            font-family: 'Courier New', monospace;
+            word-break: break-all;
+        }
+
         /* ── SCAN MODE (attendee form) ── */
         .scan-page {
             width: 100%;
@@ -341,6 +365,11 @@
         <div class="display-gift-badge">
             🎁 &nbsp;Confirme a presença e garanta seu brinde exclusivo
         </div>
+
+        <p class="display-manual-link">
+            <span class="link-label">Sem celular? Acesse pelo navegador:</span><br>
+            <span class="display-url-box" id="scan-url-text">carregando...</span>
+        </p>
     </div>
 
     <!-- ── SCAN MODE: attendee sees this after scanning ── -->
@@ -419,6 +448,8 @@
                 colorLight: '#ffffff',
                 correctLevel: QRCode.CorrectLevel.H,
             });
+            // Exibe a URL por escrito para quem não tem celular
+            document.getElementById('scan-url-text').textContent = scanUrl;
         }
 
         // ── Check-in logic ─────────────────────────────────────────────────────────

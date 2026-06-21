@@ -305,6 +305,17 @@ async def _send_ai_registration_email(lead, situation: str) -> None:
     )
 
 
+# ── Wrappers usados pelo admin.py para aprovação/rejeição manual ──────────────
+
+async def _send_confirmation(lead) -> None:
+    """Envia email de confirmação de inscrição aprovada (usado pelo admin ao aprovar manualmente)."""
+    await _send_ai_registration_email(lead, "approved")
+
+
+async def _send_not_eligible_email(lead) -> None:
+    """Envia email de cortesia de rejeição (usado pelo admin ao rejeitar manualmente)."""
+    await _send_ai_registration_email(lead, "not_eligible")
+
 
 async def _send_companion_invite(lead: Lead) -> None:
     """

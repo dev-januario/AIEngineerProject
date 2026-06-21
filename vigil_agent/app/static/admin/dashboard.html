@@ -202,7 +202,8 @@
             <h2 style="margin-bottom:0">Prompts Ativos</h2>
             <button class="btn-outline" onclick="openTemplateModal()">+ Novo Prompt</button>
           </div>
-          <div style="background:rgba(124,111,247,0.08);border:1px solid rgba(124,111,247,0.25);border-radius:8px;padding:0.75rem 1rem;margin:0.75rem 0 1rem;font-size:0.8rem;color:#a5b4fc;line-height:1.6">
+          <div
+            style="background:rgba(124,111,247,0.08);border:1px solid rgba(124,111,247,0.25);border-radius:8px;padding:0.75rem 1rem;margin:0.75rem 0 1rem;font-size:0.8rem;color:#a5b4fc;line-height:1.6">
             <strong style="color:#c4b5fd;display:block;margin-bottom:0.3rem">💡 Como funciona:</strong>
             O campo <strong>"Instrução"</strong> de cada prompt é o <em>system prompt</em> enviado ao Gemini.
             Edite as regras aqui e o Gemini seguirá automaticamente nas próximas mensagens.
@@ -225,6 +226,8 @@
           <div class="leads-filter" id="leads-filter">
             <button class="filter-btn active" data-filter="all" onclick="filterLeads('all', this)">Todos</button>
             <button class="filter-btn" data-filter="new" onclick="filterLeads('new', this)">Novos</button>
+            <button class="filter-btn" data-filter="pending_review"
+              onclick="filterLeads('pending_review', this)">Pendentes</button>
             <button class="filter-btn" data-filter="enriched"
               onclick="filterLeads('enriched', this)">Enriquecidos</button>
             <button class="filter-btn" data-filter="confirmed"
@@ -342,14 +345,17 @@
         </div>
         <div class="form-row single">
           <div>
-            <label>Instrução para a IA <span style="color:var(--purple-glow);font-weight:400;font-size:0.75rem">(System Prompt — o Gemini seguirá estas regras ao gerar a mensagem)</span></label>
+            <label>Instrução para a IA <span style="color:var(--purple-glow);font-weight:400;font-size:0.75rem">(System
+                Prompt — o Gemini seguirá estas regras ao gerar a mensagem)</span></label>
             <textarea id="tpl-body" rows="10"
               placeholder="Seu trabalho é gerar uma mensagem de [tipo] para este lead.&#10;&#10;REGRAS OBRIGATÓRIAS:&#10;- Comece pelo primeiro nome&#10;- Tom: profissional e consultivo&#10;- Extensão: 200-300 palavras"></textarea>
           </div>
         </div>
         <label style="display:inline-flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;cursor:pointer">
           <input type="checkbox" id="tpl-active" checked />
-          <span style="font-size:0.82rem;color:var(--text-secondary);text-transform:none;letter-spacing:0;white-space:nowrap">Template ativo</span>
+          <span
+            style="font-size:0.82rem;color:var(--text-secondary);text-transform:none;letter-spacing:0;white-space:nowrap">Template
+            ativo</span>
         </label>
       </form>
       <div class="modal-actions">

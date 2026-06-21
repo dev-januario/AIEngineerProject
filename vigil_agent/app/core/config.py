@@ -63,9 +63,6 @@ class Settings(BaseSettings):
     imap_port: int = 993
     imap_poll_interval_seconds: int = 60  # verifica a cada 60s
 
-    # Apollo.io (enriquecimento de perfil por LinkedIn URL ou email)
-    apollo_api_key: str = ""  # https://app.apollo.io → Settings → Integrations → API
-
     # Admin Panel JWT
     admin_jwt_secret: str = "vigil-admin-secret-change-in-production"
     admin_jwt_expire_minutes: int = 5

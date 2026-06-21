@@ -21,6 +21,13 @@ python-dotenv==1.0.1
 
 # HTTP Client
 httpx==0.28.1
+requests>=2.31.0
+
+# Email (SMTP)
+aiosmtplib>=3.0.0
+
+# WhatsApp (Twilio)
+twilio>=9.0.0
 
 # Security
 python-jose[cryptography]==3.3.0
